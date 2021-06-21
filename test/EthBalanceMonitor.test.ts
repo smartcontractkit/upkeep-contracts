@@ -2,8 +2,12 @@ import { ethers, network } from 'hardhat'
 import { assert, expect } from 'chai'
 import type { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
 import { EthBalanceMonitor } from '../typechain/EthBalanceMonitor'
+import { ReceiveReverter } from '../typechain/ReceiveReverter'
 import { EthBalanceMonitor__factory as EthBalanceMonitorFactory } from '../typechain/factories/EthBalanceMonitor__factory'
+import { ReceiveReverter__factory as ReceiveReverterFactory } from '../typechain/factories/ReceiveReverter__factory'
+import { BigNumberish, BigNumber } from 'ethers'
 
+const zeroEth = ethers.utils.parseEther('0')
 const oneEth = ethers.utils.parseEther('1')
 const twoEth = ethers.utils.parseEther('2')
 const threeEth = ethers.utils.parseEther('3')
@@ -18,27 +22,40 @@ const watchAddress4 = ethers.Wallet.createRandom().address
 let watchAddress5: string
 let watchAddress6: string
 
+const bmInterface = EthBalanceMonitorFactory.createInterface()
+
 let bm: EthBalanceMonitor
+let receiveReverter: ReceiveReverter
 let owner: SignerWithAddress
 let stranger: SignerWithAddress
 let keeperRegistry: SignerWithAddress
 
-async function assertBalances(
-  b1: number,
-  b2: number,
-  b3: number,
-  b4: number,
-  b5: number,
-  b6: number,
+async function assertBalance(
+  address: string,
+  balance: BigNumberish,
+  msg?: string,
 ) {
-  const getBalance = ethers.provider.getBalance
+  assert.isTrue(
+    (await ethers.provider.getBalance(address)).eq(BigNumber.from(balance)),
+    msg,
+  )
+}
+
+async function assertBalances(
+  balance1: number,
+  balance2: number,
+  balance3: number,
+  balance4: number,
+  balance5: number,
+  balance6: number,
+) {
   const toEth = (n: number) => ethers.utils.parseUnits(n.toString(), 'ether')
-  assert.isTrue((await getBalance(watchAddress1)).eq(toEth(b1)), 'address 1')
-  assert.isTrue((await getBalance(watchAddress2)).eq(toEth(b2)), 'address 2')
-  assert.isTrue((await getBalance(watchAddress3)).eq(toEth(b3)), 'address 3')
-  assert.isTrue((await getBalance(watchAddress4)).eq(toEth(b4)), 'address 4')
-  assert.isTrue((await getBalance(watchAddress5)).eq(toEth(b5)), 'address 5')
-  assert.isTrue((await getBalance(watchAddress6)).eq(toEth(b6)), 'address 6')
+  await assertBalance(watchAddress1, toEth(balance1), 'address 1')
+  await assertBalance(watchAddress2, toEth(balance2), 'address 2')
+  await assertBalance(watchAddress3, toEth(balance3), 'address 3')
+  await assertBalance(watchAddress4, toEth(balance4), 'address 4')
+  await assertBalance(watchAddress5, toEth(balance5), 'address 5')
+  await assertBalance(watchAddress6, toEth(balance6), 'address 6')
 }
 
 beforeEach(async () => {
@@ -49,8 +66,11 @@ beforeEach(async () => {
   watchAddress5 = accounts[3].address
   watchAddress6 = accounts[4].address
   const bmFactory = new EthBalanceMonitorFactory(owner)
+  const rrFactory = new ReceiveReverterFactory(owner)
   bm = await bmFactory.deploy(keeperRegistry.address, oneEth, twoEth)
+  receiveReverter = await rrFactory.deploy()
   await bm.deployed()
+  await receiveReverter.deployed()
 })
 
 afterEach(async () => {
@@ -80,6 +100,19 @@ describe('EthBalanceMonitor', () => {
         value: oneEth,
       })
       await tx2.wait()
+    })
+
+    it('Should emit an event', async () => {
+      const tx = await owner.sendTransaction({
+        to: bm.address,
+        value: oneEth,
+      })
+      const receipt = await tx.wait()
+      const logData = bmInterface.decodeEventLog(
+        bmInterface.events['FundsAdded(uint256)'].name,
+        receipt.logs[0].data,
+      )
+      assert.isTrue(oneEth.eq(logData[0]))
     })
   })
 
@@ -290,6 +323,27 @@ describe('EthBalanceMonitor', () => {
           .performUpkeep(invalidPayload)
         await performTx.wait()
         await assertBalances(2, 2, 0, 0, 10_000, 10_000)
+      })
+
+      it('Should continue funding addresses even if one reverts', async () => {
+        await assertBalances(0, 0, 0, 0, 10_000, 10_000)
+        const addresses = [
+          watchAddress1,
+          receiveReverter.address,
+          watchAddress2,
+        ]
+        const setTx = await bm.connect(owner).setWatchList(addresses)
+        await setTx.wait()
+        const payload = ethers.utils.defaultAbiCoder.encode(
+          ['address[]'],
+          [addresses],
+        )
+        const performTx = await bm
+          .connect(keeperRegistry)
+          .performUpkeep(payload)
+        await performTx.wait()
+        await assertBalances(2, 2, 0, 0, 10_000, 10_000)
+        await assertBalance(receiveReverter.address, 0)
       })
 
       it('Should only be callable by the keeper registry contract', async () => {

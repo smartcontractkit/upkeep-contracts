@@ -8,6 +8,18 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 
 contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
 
+  event FundsAdded (
+    uint256 newBalance
+  );
+
+  event TopUpSucceeded (
+    address indexed recipient
+  );
+
+  event TopUpFailed (
+    address indexed recipient
+  );
+
   struct Config {
     uint256 minBalanceWei;
     uint256 topUpAmountWei;
@@ -23,7 +35,9 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
     _setConfig(minBalanceWei, topUpAmountWei);
   }
 
-  receive() external payable {}
+  receive() external payable {
+    emit FundsAdded(address(this).balance);
+  }
 
   function withdraw(uint256 _amount, address payable _payee) external onlyOwner {
     _payee.transfer(_amount);
@@ -91,6 +105,7 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
   }
 
   function performUpkeep(bytes calldata _performData) override external whenNotPaused() {
+    require(msg.sender == keeperRegistryAddress, "only callable by keeper");
     address[] memory needsFunding = abi.decode(_performData, (address[]));
     Config memory config = s_config;
     if (address(this).balance < needsFunding.length * config.topUpAmountWei) {
@@ -98,7 +113,12 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
     }
     for (uint256 idx = 0; idx < needsFunding.length; idx++) {
       if (activeAddresses[needsFunding[idx]] && needsFunding[idx].balance < config.minBalanceWei) {
-        payable(needsFunding[idx]).transfer(config.topUpAmountWei);
+        bool success = payable(needsFunding[idx]).send(config.topUpAmountWei);
+        if (success) {
+          emit TopUpSucceeded(address(this));
+        } else {
+          emit TopUpFailed(address(this));
+        }
       }
     }
   }
