@@ -1,13 +1,12 @@
 import { ethers, network } from 'hardhat'
 import { assert, expect } from 'chai'
 import type { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
-import { EthBalanceMonitor } from '../typechain/EthBalanceMonitor'
+import { EthBalanceMonitorExposed } from '../typechain/EthBalanceMonitorExposed'
 import { ReceiveReverter } from '../typechain/ReceiveReverter'
-import { EthBalanceMonitor__factory as EthBalanceMonitorFactory } from '../typechain/factories/EthBalanceMonitor__factory'
+import { EthBalanceMonitorExposed__factory as EthBalanceMonitorFactory } from '../typechain/factories/EthBalanceMonitorExposed__factory'
 import { ReceiveReverter__factory as ReceiveReverterFactory } from '../typechain/factories/ReceiveReverter__factory'
 import { BigNumberish, BigNumber } from 'ethers'
 
-const zeroEth = ethers.utils.parseEther('0')
 const oneEth = ethers.utils.parseEther('1')
 const twoEth = ethers.utils.parseEther('2')
 const threeEth = ethers.utils.parseEther('3')
@@ -24,7 +23,7 @@ let watchAddress6: string
 
 const bmInterface = EthBalanceMonitorFactory.createInterface()
 
-let bm: EthBalanceMonitor
+let bm: EthBalanceMonitorExposed
 let receiveReverter: ReceiveReverter
 let owner: SignerWithAddress
 let stranger: SignerWithAddress
@@ -41,7 +40,7 @@ async function assertBalance(
   )
 }
 
-async function assertBalances(
+async function assertWatchlistBalances(
   balance1: number,
   balance2: number,
   balance3: number,
@@ -58,6 +57,8 @@ async function assertBalances(
   await assertBalance(watchAddress6, toEth(balance6), 'address 6')
 }
 
+const OWNABLE_ERR = 'Ownable: caller is not the owner'
+
 beforeEach(async () => {
   const accounts = await ethers.getSigners()
   owner = accounts[0]
@@ -67,7 +68,8 @@ beforeEach(async () => {
   watchAddress6 = accounts[4].address
   const bmFactory = new EthBalanceMonitorFactory(owner)
   const rrFactory = new ReceiveReverterFactory(owner)
-  bm = await bmFactory.deploy(keeperRegistry.address, oneEth, twoEth)
+  bm = await bmFactory.deploy(keeperRegistry.address, oneEth, 0, twoEth)
+  receiveReverter = await rrFactory.deploy()
   receiveReverter = await rrFactory.deploy()
   await bm.deployed()
   await receiveReverter.deployed()
@@ -155,7 +157,7 @@ describe('EthBalanceMonitor', () => {
       const withdrawTxStranger = bm
         .connect(stranger)
         .withdraw(oneEth, owner.address)
-      expect(withdrawTxStranger).to.be.revertedWith('')
+      await expect(withdrawTxStranger).to.be.revertedWith(OWNABLE_ERR)
     })
   })
 
@@ -169,11 +171,11 @@ describe('EthBalanceMonitor', () => {
 
     it('Should not allow strangers to pause / unpause', async () => {
       const pauseTxStranger = bm.connect(stranger).pause()
-      expect(pauseTxStranger).to.be.revertedWith('')
+      await expect(pauseTxStranger).to.be.revertedWith(OWNABLE_ERR)
       const pauseTxOwner = await bm.connect(owner).pause()
       await pauseTxOwner.wait()
       const unpauseTxStranger = bm.connect(stranger).unpause()
-      expect(unpauseTxStranger).to.be.revertedWith('')
+      await expect(unpauseTxStranger).to.be.revertedWith(OWNABLE_ERR)
     })
   })
 
@@ -183,7 +185,7 @@ describe('EthBalanceMonitor', () => {
       let setTx = await bm.connect(owner).setWatchList([watchAddress1])
       await setTx.wait()
       let watchList = await bm.getWatchList()
-      assert.deepEqual([watchAddress1], watchList)
+      assert.deepEqual(watchList, [watchAddress1])
       assert.isTrue(await bm.isActive(watchAddress1))
       assert.isFalse(await bm.isActive(watchAddress2))
       assert.isFalse(await bm.isActive(watchAddress3))
@@ -193,7 +195,7 @@ describe('EthBalanceMonitor', () => {
         .setWatchList([watchAddress1, watchAddress2, watchAddress3])
       await setTx.wait()
       watchList = await bm.getWatchList()
-      assert.deepEqual([watchAddress1, watchAddress2, watchAddress3], watchList)
+      assert.deepEqual(watchList, [watchAddress1, watchAddress2, watchAddress3])
       assert.isTrue(await bm.isActive(watchAddress1))
       assert.isTrue(await bm.isActive(watchAddress2))
       assert.isTrue(await bm.isActive(watchAddress3))
@@ -203,7 +205,7 @@ describe('EthBalanceMonitor', () => {
         .setWatchList([watchAddress3, watchAddress1])
       await setTx.wait()
       watchList = await bm.getWatchList()
-      assert.deepEqual([watchAddress3, watchAddress1], watchList)
+      assert.deepEqual(watchList, [watchAddress3, watchAddress1])
       assert.isTrue(await bm.isActive(watchAddress1))
       assert.isFalse(await bm.isActive(watchAddress2))
       assert.isTrue(await bm.isActive(watchAddress3))
@@ -211,28 +213,32 @@ describe('EthBalanceMonitor', () => {
 
     it('Should not allow strangers to set the watchlist', async () => {
       const setTxStranger = bm.connect(stranger).setWatchList([watchAddress1])
-      expect(setTxStranger).to.be.revertedWith('')
+      await expect(setTxStranger).to.be.revertedWith(OWNABLE_ERR)
     })
   })
 
   describe('setConfig() / getConfig()', () => {
     it('Should initialize with the config provided to the constructor', async () => {
-      const [minBalanceWei, topUpAmountWei] = await bm.getConfig()
+      const [minBalanceWei, minWaitPeriod, topUpAmountWei] =
+        await bm.getConfig()
       assert.isTrue(minBalanceWei.eq(oneEth))
+      assert.isTrue(minWaitPeriod.eq(BigNumber.from(0)))
       assert.isTrue(topUpAmountWei.eq(twoEth))
     })
 
     it('Should allow owner to set the watchlist', async () => {
-      const setTx = await bm.connect(owner).setConfig(twoEth, threeEth)
+      const setTx = await bm.connect(owner).setConfig(twoEth, 1, threeEth)
       await setTx.wait()
-      const [minBalanceWei, topUpAmountWei] = await bm.getConfig()
+      const [minBalanceWei, minWaitPeriod, topUpAmountWei] =
+        await bm.getConfig()
       assert.isTrue(minBalanceWei.eq(twoEth))
+      assert.isTrue(minWaitPeriod.eq(BigNumber.from(1)))
       assert.isTrue(topUpAmountWei.eq(threeEth))
     })
 
     it('Should not allow strangers to set the watchlist', async () => {
-      const setTxStranger = bm.connect(stranger).setConfig(twoEth, threeEth)
-      expect(setTxStranger).to.be.revertedWith('')
+      const setTxStranger = bm.connect(stranger).setConfig(twoEth, 0, threeEth)
+      await expect(setTxStranger).to.be.revertedWith(OWNABLE_ERR)
     })
   })
 
@@ -258,7 +264,7 @@ describe('EthBalanceMonitor', () => {
       assert.isFalse(should)
     })
 
-    it('Should list of address that are underfunded', async () => {
+    it('Should return list of address that are underfunded', async () => {
       const fundTx = await owner.sendTransaction({
         to: bm.address,
         value: sixEth, // needs 6 total
@@ -270,7 +276,29 @@ describe('EthBalanceMonitor', () => {
         ['address[]'],
         payload,
       )
-      assert.deepEqual([watchAddress1, watchAddress2, watchAddress3], addresses)
+      assert.deepEqual(addresses, [watchAddress1, watchAddress2, watchAddress3])
+    })
+
+    it('Should omit addresses that have been funded recently', async () => {
+      const setConfigTx = await bm.setConfig(oneEth, 5, twoEth)
+      const fundTx = await owner.sendTransaction({
+        to: bm.address,
+        value: sixEth,
+      })
+      await Promise.all([setConfigTx.wait(), fundTx.wait()])
+      const blockNum = await ethers.provider.getBlockNumber()
+      const setTopUpTx = await bm.setLastTopUpXXXTestOnly(
+        watchAddress2,
+        blockNum - 1,
+      )
+      await setTopUpTx.wait()
+      const [should, payload] = await bm.checkUpkeep('0x')
+      assert.isTrue(should)
+      const [addresses] = ethers.utils.defaultAbiCoder.decode(
+        ['address[]'],
+        payload,
+      )
+      assert.deepEqual(addresses, [watchAddress1, watchAddress3])
     })
   })
 
@@ -308,25 +336,25 @@ describe('EthBalanceMonitor', () => {
       })
 
       it('Should fund the appropriate addresses', async () => {
-        await assertBalances(0, 0, 0, 0, 10_000, 10_000)
+        await assertWatchlistBalances(0, 0, 0, 0, 10_000, 10_000)
         const performTx = await bm
           .connect(keeperRegistry)
           .performUpkeep(validPayload)
         await performTx.wait()
-        await assertBalances(2, 2, 2, 0, 10_000, 10_000)
+        await assertWatchlistBalances(2, 2, 2, 0, 10_000, 10_000)
       })
 
       it('Should only fund active, underfunded addresses', async () => {
-        await assertBalances(0, 0, 0, 0, 10_000, 10_000)
+        await assertWatchlistBalances(0, 0, 0, 0, 10_000, 10_000)
         const performTx = await bm
           .connect(keeperRegistry)
           .performUpkeep(invalidPayload)
         await performTx.wait()
-        await assertBalances(2, 2, 0, 0, 10_000, 10_000)
+        await assertWatchlistBalances(2, 2, 0, 0, 10_000, 10_000)
       })
 
       it('Should continue funding addresses even if one reverts', async () => {
-        await assertBalances(0, 0, 0, 0, 10_000, 10_000)
+        await assertWatchlistBalances(0, 0, 0, 0, 10_000, 10_000)
         const addresses = [
           watchAddress1,
           receiveReverter.address,
@@ -342,21 +370,41 @@ describe('EthBalanceMonitor', () => {
           .connect(keeperRegistry)
           .performUpkeep(payload)
         await performTx.wait()
-        await assertBalances(2, 2, 0, 0, 10_000, 10_000)
+        await assertWatchlistBalances(2, 2, 0, 0, 10_000, 10_000)
         await assertBalance(receiveReverter.address, 0)
+        // TODO - RYAN - test for events
+      })
+
+      it('Should not fund addresses that have been funded recently', async () => {
+        const setConfigTx = await bm.setConfig(oneEth, 5, twoEth)
+        await setConfigTx.wait()
+        const blockNum = await ethers.provider.getBlockNumber()
+        const setTopUpTx = await bm.setLastTopUpXXXTestOnly(
+          watchAddress2,
+          blockNum - 1,
+        )
+        await setTopUpTx.wait()
+        await assertWatchlistBalances(0, 0, 0, 0, 10_000, 10_000)
+        const performTx = await bm
+          .connect(keeperRegistry)
+          .performUpkeep(validPayload)
+        await performTx.wait()
+        await assertWatchlistBalances(2, 0, 2, 0, 10_000, 10_000)
       })
 
       it('Should only be callable by the keeper registry contract', async () => {
+        const revertReason = 'only callable by keeper'
         let performTx = bm.connect(owner).performUpkeep(validPayload)
-        expect(performTx).to.be.revertedWith('')
+        await expect(performTx).to.be.revertedWith(revertReason)
         performTx = bm.connect(stranger).performUpkeep(validPayload)
-        expect(performTx).to.be.revertedWith('')
+        await expect(performTx).to.be.revertedWith(revertReason)
       })
     })
 
     it('Should revert if there is not enough eth', async () => {
+      const revertReason = 'not enough eth to fund all addresses'
       const performTx = bm.connect(keeperRegistry).performUpkeep(validPayload)
-      expect(performTx).to.be.revertedWith('')
+      await expect(performTx).to.be.revertedWith(revertReason)
     })
   })
 })

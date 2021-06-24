@@ -22,17 +22,19 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
 
   struct Config {
     uint256 minBalanceWei;
+    uint256 minWaitPeriod;
     uint256 topUpAmountWei;
   }
 
-  address[] private s_watchList;
-  mapping (address=>bool) private activeAddresses;
-  Config private s_config;
   address public keeperRegistryAddress;
+  address[] private s_watchList;
+  Config private s_config;
+  mapping (address=>bool) private activeAddresses;
+  mapping (address=>uint256) internal lastTopUp;
 
-  constructor(address _keeperRegistryAddress, uint256 minBalanceWei, uint256 topUpAmountWei) {
+  constructor(address _keeperRegistryAddress, uint256 _minBalanceWei, uint256 _minWaitPeriod, uint256 _topUpAmountWei) {
     keeperRegistryAddress = _keeperRegistryAddress;
-    _setConfig(minBalanceWei, topUpAmountWei);
+    _setConfig(_minBalanceWei, _minWaitPeriod, _topUpAmountWei);
   }
 
   receive() external payable {
@@ -43,13 +45,13 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
     _payee.transfer(_amount);
   }
 
-  function setConfig(uint256 _minBalanceWei, uint256 _topUpAmountWei) external onlyOwner {
-    _setConfig(_minBalanceWei, _topUpAmountWei);
+  function setConfig(uint256 _minBalanceWei, uint256 _minWaitPeriod, uint256 _topUpAmountWei) external onlyOwner {
+    _setConfig(_minBalanceWei, _minWaitPeriod, _topUpAmountWei);
   }
 
-  function getConfig() public view returns(uint256 minBalanceWei, uint256 topUpAmountWei) {
+  function getConfig() public view returns(uint256 minBalanceWei, uint256 minWaitPeriod, uint256 topUpAmountWei) {
     Config memory config = s_config;
-    return (config.minBalanceWei, config.topUpAmountWei);
+    return (config.minBalanceWei, config.minWaitPeriod, config.topUpAmountWei);
   }
 
   function setWatchList(address[] memory _watchList) external onlyOwner {
@@ -90,7 +92,7 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
     address[] memory needsFunding = new address[](watchList.length);
     uint256 count = 0;
     for (uint256 idx = 0; idx < watchList.length; idx++) {
-      if (watchList[idx].balance < config.minBalanceWei) {
+      if (watchList[idx].balance < config.minBalanceWei && lastTopUp[watchList[idx]] + config.minWaitPeriod <= block.number) {
         needsFunding[count] = watchList[idx];
         count++;
       }
@@ -112,9 +114,13 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
       revert("not enough eth to fund all addresses");
     }
     for (uint256 idx = 0; idx < needsFunding.length; idx++) {
-      if (activeAddresses[needsFunding[idx]] && needsFunding[idx].balance < config.minBalanceWei) {
+      if (activeAddresses[needsFunding[idx]] &&
+        needsFunding[idx].balance < config.minBalanceWei &&
+        lastTopUp[needsFunding[idx]] + config.minWaitPeriod <= block.number
+      ) {
         bool success = payable(needsFunding[idx]).send(config.topUpAmountWei);
         if (success) {
+          lastTopUp[needsFunding[idx]] = block.number;
           emit TopUpSucceeded(address(this));
         } else {
           emit TopUpFailed(address(this));
@@ -123,9 +129,10 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
     }
   }
 
-  function _setConfig(uint256 _minBalanceWei, uint256 _topUpAmountWei) internal {
+  function _setConfig(uint256 _minBalanceWei, uint256 _minWaitPeriod, uint256 _topUpAmountWei) internal {
     Config memory config = Config({
       minBalanceWei: _minBalanceWei,
+      minWaitPeriod: _minWaitPeriod,
       topUpAmountWei: _topUpAmountWei
     });
     s_config = config;
