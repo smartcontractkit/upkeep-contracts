@@ -21,8 +21,6 @@ const watchAddress4 = ethers.Wallet.createRandom().address
 let watchAddress5: string
 let watchAddress6: string
 
-const bmInterface = EthBalanceMonitorFactory.createInterface()
-
 let bm: EthBalanceMonitorExposed
 let receiveReverter: ReceiveReverter
 let owner: SignerWithAddress
@@ -34,10 +32,7 @@ async function assertBalance(
   balance: BigNumberish,
   msg?: string,
 ) {
-  assert.isTrue(
-    (await ethers.provider.getBalance(address)).eq(BigNumber.from(balance)),
-    msg,
-  )
+  expect(await ethers.provider.getBalance(address)).equal(balance, msg)
 }
 
 async function assertWatchlistBalances(
@@ -109,12 +104,7 @@ describe('EthBalanceMonitor', () => {
         to: bm.address,
         value: oneEth,
       })
-      const receipt = await tx.wait()
-      const logData = bmInterface.decodeEventLog(
-        bmInterface.events['FundsAdded(uint256)'].name,
-        receipt.logs[0].data,
-      )
-      assert.isTrue(oneEth.eq(logData[0]))
+      expect(tx).to.emit(bm, 'FundsAdded').withArgs(oneEth)
     })
   })
 
@@ -372,7 +362,11 @@ describe('EthBalanceMonitor', () => {
         await performTx.wait()
         await assertWatchlistBalances(2, 2, 0, 0, 10_000, 10_000)
         await assertBalance(receiveReverter.address, 0)
-        // TODO - RYAN - test for events
+        expect(performTx).to.emit(bm, 'TopUpSucceeded').withArgs(watchAddress1)
+        expect(performTx).to.emit(bm, 'TopUpSucceeded').withArgs(watchAddress2)
+        expect(performTx)
+          .to.emit(bm, 'TopUpFailed')
+          .withArgs(receiveReverter.address)
       })
 
       it('Should not fund addresses that have been funded recently', async () => {

@@ -121,9 +121,9 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
         bool success = payable(needsFunding[idx]).send(config.topUpAmountWei);
         if (success) {
           lastTopUp[needsFunding[idx]] = block.number;
-          emit TopUpSucceeded(address(this));
+          emit TopUpSucceeded(needsFunding[idx]);
         } else {
-          emit TopUpFailed(address(this));
+          emit TopUpFailed(needsFunding[idx]);
         }
       }
     }
