@@ -21,20 +21,20 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
   );
 
   struct Config {
+    bool isActive;
     uint256 minBalanceWei;
-    uint256 minWaitPeriod;
     uint256 topUpAmountWei;
+    uint256 lastTopUp;
   }
 
-  address public keeperRegistryAddress;
+  address private s_keeperRegistryAddress;
+  uint256 private s_minWaitPeriod;
   address[] private s_watchList;
-  Config private s_config;
-  mapping (address=>bool) private activeAddresses;
-  mapping (address=>uint256) internal lastTopUp;
+  mapping (address=>Config) internal accountConfigs;
 
-  constructor(address _keeperRegistryAddress, uint256 _minBalanceWei, uint256 _minWaitPeriod, uint256 _topUpAmountWei) {
-    keeperRegistryAddress = _keeperRegistryAddress;
-    _setConfig(_minBalanceWei, _minWaitPeriod, _topUpAmountWei);
+  constructor(address _keeperRegistryAddress, uint256 _minWaitPeriod) {
+    s_keeperRegistryAddress = _keeperRegistryAddress;
+    s_minWaitPeriod = _minWaitPeriod;
   }
 
   receive() external payable {
@@ -45,32 +45,50 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
     _payee.transfer(_amount);
   }
 
-  function setConfig(uint256 _minBalanceWei, uint256 _minWaitPeriod, uint256 _topUpAmountWei) external onlyOwner {
-    _setConfig(_minBalanceWei, _minWaitPeriod, _topUpAmountWei);
+  function getKeeperRegistryAddress() public view returns(address keeperRegistryAddress) {
+    return s_keeperRegistryAddress;
   }
 
-  function getConfig() public view returns(uint256 minBalanceWei, uint256 minWaitPeriod, uint256 topUpAmountWei) {
-    Config memory config = s_config;
-    return (config.minBalanceWei, config.minWaitPeriod, config.topUpAmountWei);
+  function setKeeperRegistryAddress(address _keeperRegistryAddress) external onlyOwner {
+    s_keeperRegistryAddress = _keeperRegistryAddress;
   }
 
-  function setWatchList(address[] memory _watchList) external onlyOwner {
-    address[] memory watchList = s_watchList;
-    for (uint256 idx = 0; idx < watchList.length; idx++) {
-      activeAddresses[watchList[idx]] = false;
+  function getMinWaitPeriod() public view returns(uint256 minWaitPeriod) {
+    return s_minWaitPeriod;
+  }
+
+  function setMinWaitPeriod(uint256 _minWaitPeriod) external onlyOwner {
+    s_minWaitPeriod = _minWaitPeriod;
+  }
+
+  function setWatchList(address[] memory _addresses, uint256[] memory _minBalancesWei, uint256[] memory _topUpAmountsWei) external onlyOwner {
+    require(_addresses.length == _minBalancesWei.length && _addresses.length == _topUpAmountsWei.length, "all lists must have same length");
+    address[] memory oldWatchList = s_watchList;
+    address[] memory newWatchList = new address[](_addresses.length);
+    for (uint256 idx = 0; idx < oldWatchList.length; idx++) {
+      accountConfigs[oldWatchList[idx]].isActive = false;
     }
-    for (uint256 idx = 0; idx < _watchList.length; idx++) {
-      activeAddresses[_watchList[idx]] = true;
+    for (uint256 idx = 0; idx < _addresses.length; idx++) {
+      newWatchList[idx] = _addresses[idx];
+      accountConfigs[_addresses[idx]] = Config({
+        isActive: true,
+        minBalanceWei: _minBalancesWei[idx],
+        topUpAmountWei: _topUpAmountsWei[idx],
+        lastTopUp: 0
+      });
     }
-    s_watchList = _watchList;
+    s_watchList = newWatchList;
   }
 
   function getWatchList() public view returns(address[] memory) {
     return s_watchList;
   }
 
-  function isActive(address _address) public view returns(bool) {
-    return activeAddresses[_address];
+  function getAccountInfo(address target) public view
+    returns(bool isActive, uint256 minBalanceWei, uint256 topUpAmountWei, uint256 lastTopUp)
+  {
+    Config memory config = accountConfigs[target];
+    return (config.isActive, config.minBalanceWei, config.topUpAmountWei, config.lastTopUp);
   }
 
   function pause() external onlyOwner {
@@ -87,14 +105,22 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
       bytes memory performData
     )
   {
-    Config memory config = s_config;
     address[] memory watchList = s_watchList;
     address[] memory needsFunding = new address[](watchList.length);
     uint256 count = 0;
+    uint256 topUpCost = 0;
+    uint256 minWaitPeriod = s_minWaitPeriod;
+    uint256 balance = address(this).balance;
     for (uint256 idx = 0; idx < watchList.length; idx++) {
-      if (watchList[idx].balance < config.minBalanceWei && lastTopUp[watchList[idx]] + config.minWaitPeriod <= block.number) {
+      Config memory config = accountConfigs[watchList[idx]];
+      if (
+        watchList[idx].balance < config.minBalanceWei &&
+        config.lastTopUp + minWaitPeriod <= block.number //&&
+        // balance >= topUpCost + config.topUpAmountWei
+      ) {
         needsFunding[count] = watchList[idx];
         count++;
+        topUpCost += config.topUpAmountWei;
       }
     }
     if (count != watchList.length) {
@@ -102,39 +128,28 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
         mstore(needsFunding, count)
       }
     }
-    bool canPerform = count > 0 && address(this).balance >= count * config.topUpAmountWei;
+    bool canPerform = count > 0 && address(this).balance >= topUpCost;
     return (canPerform, abi.encode(needsFunding));
   }
 
   function performUpkeep(bytes calldata _performData) override external whenNotPaused() {
-    require(msg.sender == keeperRegistryAddress, "only callable by keeper");
+    require(msg.sender == s_keeperRegistryAddress, "only callable by keeper");
     address[] memory needsFunding = abi.decode(_performData, (address[]));
-    Config memory config = s_config;
-    if (address(this).balance < needsFunding.length * config.topUpAmountWei) {
-      revert("not enough eth to fund all addresses");
-    }
+    uint256 minWaitPeriod = s_minWaitPeriod;
     for (uint256 idx = 0; idx < needsFunding.length; idx++) {
-      if (activeAddresses[needsFunding[idx]] &&
+      Config memory config = accountConfigs[needsFunding[idx]];
+      if (config.isActive &&
         needsFunding[idx].balance < config.minBalanceWei &&
-        lastTopUp[needsFunding[idx]] + config.minWaitPeriod <= block.number
+        config.lastTopUp + minWaitPeriod <= block.number
       ) {
         bool success = payable(needsFunding[idx]).send(config.topUpAmountWei);
         if (success) {
-          lastTopUp[needsFunding[idx]] = block.number;
+          accountConfigs[needsFunding[idx]].lastTopUp = block.number;
           emit TopUpSucceeded(needsFunding[idx]);
         } else {
           emit TopUpFailed(needsFunding[idx]);
         }
       }
     }
-  }
-
-  function _setConfig(uint256 _minBalanceWei, uint256 _minWaitPeriod, uint256 _topUpAmountWei) internal {
-    Config memory config = Config({
-      minBalanceWei: _minBalanceWei,
-      minWaitPeriod: _minWaitPeriod,
-      topUpAmountWei: _topUpAmountWei
-    });
-    s_config = config;
   }
 }
