@@ -115,8 +115,8 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
       Config memory config = accountConfigs[watchList[idx]];
       if (
         watchList[idx].balance < config.minBalanceWei &&
-        config.lastTopUp + minWaitPeriod <= block.number //&&
-        // balance >= topUpCost + config.topUpAmountWei
+        config.lastTopUp + minWaitPeriod <= block.number &&
+        balance >= topUpCost + config.topUpAmountWei
       ) {
         needsFunding[count] = watchList[idx];
         count++;

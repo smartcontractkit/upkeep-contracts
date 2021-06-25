@@ -285,16 +285,6 @@ describe('EthBalanceMonitor', () => {
       await setTx.wait()
     })
 
-    it('Should return no results if contract lacks sufficient funds', async () => {
-      const fundTx = await owner.sendTransaction({
-        to: bm.address,
-        value: fiveEth, // needs 6 total
-      })
-      await fundTx.wait()
-      const [should, _] = await bm.checkUpkeep('0x')
-      assert.isFalse(should)
-    })
-
     it('Should return list of address that are underfunded', async () => {
       const fundTx = await owner.sendTransaction({
         to: bm.address,
@@ -308,6 +298,21 @@ describe('EthBalanceMonitor', () => {
         payload,
       )
       assert.deepEqual(addresses, [watchAddress1, watchAddress2, watchAddress3])
+    })
+
+    it('Should return some results even if contract cannot fund all eligible targets', async () => {
+      const fundTx = await owner.sendTransaction({
+        to: bm.address,
+        value: fiveEth, // needs 6 total
+      })
+      await fundTx.wait()
+      const [should, payload] = await bm.checkUpkeep('0x')
+      assert.isTrue(should)
+      const [addresses] = ethers.utils.defaultAbiCoder.decode(
+        ['address[]'],
+        payload,
+      )
+      assert.deepEqual(addresses, [watchAddress1, watchAddress2])
     })
 
     it('Should omit addresses that have been funded recently', async () => {
