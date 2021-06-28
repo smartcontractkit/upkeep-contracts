@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity 0.8.4;
 
 import "../interfaces/KeeperCompatibleInterface.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
+/**
+ * @title The EthBalanceMonitor contract
+ * @notice A keeper-compatible contract that monitors and funds eth addresses
+ */
 contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
 
-  uint256 constant MIN_GAS_FOR_TRANSFER = 70000;
+  uint256 constant private MIN_GAS_FOR_TRANSFER = 70000;
 
   event FundsAdded (
     uint256 newBalance
@@ -34,35 +37,65 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
   address[] private s_watchList;
   mapping (address=>Config) internal accountConfigs;
 
+  /**
+   * @param _keeperRegistryAddress The address of the keeper registry contract
+   * @param _minWaitPeriod The minimum wait period for addresses between funding
+   */
   constructor(address _keeperRegistryAddress, uint256 _minWaitPeriod) {
     s_keeperRegistryAddress = _keeperRegistryAddress;
     s_minWaitPeriod = _minWaitPeriod;
   }
 
+  /**
+   * @notice Receive funds
+   */
   receive() external payable {
     emit FundsAdded(address(this).balance);
   }
 
+  /**
+   * @notice Withdraws the contract balance
+   * @param _amount The amount of eth (in wei) to withdraw
+   * @param _payee The address to pay
+   */
   function withdraw(uint256 _amount, address payable _payee) external onlyOwner {
     _payee.transfer(_amount);
   }
 
+  /**
+   * @notice Gets the keeper registry address
+   */
   function getKeeperRegistryAddress() public view returns(address keeperRegistryAddress) {
     return s_keeperRegistryAddress;
   }
 
+  /**
+   * @notice Sets the keeper registry address
+   */
   function setKeeperRegistryAddress(address _keeperRegistryAddress) external onlyOwner {
     s_keeperRegistryAddress = _keeperRegistryAddress;
   }
 
+  /**
+   * @notice Gets the minimum wait period
+   */
   function getMinWaitPeriod() public view returns(uint256 minWaitPeriod) {
     return s_minWaitPeriod;
   }
 
+  /**
+   * @notice Sets the minimum wait period for addresses between funding
+   */
   function setMinWaitPeriod(uint256 _minWaitPeriod) external onlyOwner {
     s_minWaitPeriod = _minWaitPeriod;
   }
 
+  /**
+   * @notice Sets the list of addresses to watch and their funding parameters
+   * @param _addresses the list of addresses to watch
+   * @param _minBalancesWei the minimum balances for each address
+   * @param _topUpAmountsWei the amount to top up each address
+   */
   function setWatchList(address[] memory _addresses, uint256[] memory _minBalancesWei, uint256[] memory _topUpAmountsWei) external onlyOwner {
     require(_addresses.length == _minBalancesWei.length && _addresses.length == _topUpAmountsWei.length, "all lists must have same length");
     address[] memory oldWatchList = s_watchList;
@@ -82,10 +115,16 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
     s_watchList = newWatchList;
   }
 
+  /**
+   * @notice Gets the list of addresses being watched
+   */
   function getWatchList() public view returns(address[] memory) {
     return s_watchList;
   }
 
+  /**
+   * @notice Gets configuration information for an address
+   */
   function getAccountInfo(address target) public view
     returns(bool isActive, uint256 minBalanceWei, uint256 topUpAmountWei, uint256 lastTopUp)
   {
@@ -93,14 +132,25 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
     return (config.isActive, config.minBalanceWei, config.topUpAmountWei, config.lastTopUp);
   }
 
+  /**
+   * @notice Pauses the contract, which prevents executing performUpkeep
+   */
   function pause() external onlyOwner {
     _pause();
   }
 
+  /**
+   * @notice Unpauses the contract
+   */
   function unpause() external onlyOwner {
     _unpause();
   }
 
+  /**
+   * @notice Checks list of addresses for those that require funding
+   * @param _checkData unused but needed to conform to keeper API
+   * @return upkeepNeeded signals if upkeep is needed, performData is an abi encoded list of addresses that need funds
+   */
   function checkUpkeep(bytes calldata _checkData) override view public
     returns (
       bool upkeepNeeded,
@@ -134,6 +184,10 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
     return (canPerform, abi.encode(needsFunding));
   }
 
+  /**
+   * @notice Sends fund to the addresses specified in performData
+   * @param _performData The abi encoded list of addresses to fund
+   */
   function performUpkeep(bytes calldata _performData) override external whenNotPaused() {
     require(msg.sender == s_keeperRegistryAddress, "only callable by keeper");
     address[] memory needsFunding = abi.decode(_performData, (address[]));
