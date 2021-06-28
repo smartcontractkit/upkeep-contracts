@@ -228,6 +228,83 @@ describe('EthBalanceMonitor', () => {
     })
   })
 
+  describe('addAddressToWatchList()', async () => {
+    it('Should allow the owner to add an address to the watchlist', async () => {
+      let addTx = await bm
+        .connect(owner)
+        .addAddressToWatchList(watchAddress1, oneEth, twoEth)
+      await addTx.wait()
+      let watchList = await bm.getWatchList()
+      assert.deepEqual(watchList, [watchAddress1])
+      let accountInfo = await bm.getAccountInfo(watchAddress1)
+      expect(accountInfo.isActive).to.be.true
+      expect(accountInfo.minBalanceWei).to.equal(oneEth)
+      expect(accountInfo.topUpAmountWei).to.equal(twoEth)
+      addTx = await bm
+        .connect(owner)
+        .addAddressToWatchList(watchAddress2, oneEth, twoEth)
+      await addTx.wait()
+      watchList = await bm.getWatchList()
+      assert.deepEqual(watchList, [watchAddress1, watchAddress2])
+    })
+
+    it('Should revert if trying to add a duplicate address', async () => {
+      const addTx = await bm
+        .connect(owner)
+        .addAddressToWatchList(watchAddress1, oneEth, twoEth)
+      await addTx.wait()
+      const addTx2 = bm
+        .connect(owner)
+        .addAddressToWatchList(watchAddress1, oneEth, twoEth)
+      await expect(addTx2).to.be.revertedWith('address is already on watchlist')
+    })
+
+    it('Should not allow strangers to add an address to the watchlist', async () => {
+      const setTxStranger = bm
+        .connect(stranger)
+        .addAddressToWatchList(watchAddress1, oneEth, twoEth)
+      await expect(setTxStranger).to.be.revertedWith(OWNABLE_ERR)
+    })
+  })
+
+  describe('removeAddressFromWatchList()', async () => {
+    beforeEach(async () => {
+      const setTx = await bm
+        .connect(owner)
+        .setWatchList(
+          [watchAddress1, watchAddress2],
+          [oneEth, oneEth],
+          [twoEth, twoEth],
+        )
+      await setTx.wait()
+    })
+
+    it('Should allow the owner to remove an address', async () => {
+      const removeTx = await bm
+        .connect(owner)
+        .removeAddressFromWatchList(watchAddress1)
+      await removeTx.wait()
+      const watchList = await bm.getWatchList()
+      assert.deepEqual(watchList, [watchAddress2])
+      let accountInfo = await bm.getAccountInfo(watchAddress1)
+      expect(accountInfo.isActive).to.be.false
+    })
+
+    it('Should revert when trying to remove an address not on the list', async () => {
+      const removeTx = bm
+        .connect(owner)
+        .removeAddressFromWatchList(watchAddress3)
+      await expect(removeTx).to.be.revertedWith('address is not on watchlist')
+    })
+
+    it('Should not allow strangers to remove from the watchlist', async () => {
+      const removeTxStranger = bm
+        .connect(stranger)
+        .removeAddressFromWatchList(watchAddress1)
+      await expect(removeTxStranger).to.be.revertedWith(OWNABLE_ERR)
+    })
+  })
+
   describe('getKeeperRegistryAddress() / setKeeperRegistryAddress()', () => {
     const newAddress = ethers.Wallet.createRandom().address
 
@@ -236,7 +313,7 @@ describe('EthBalanceMonitor', () => {
       assert.equal(address, keeperRegistry.address)
     })
 
-    it('Should allow owner to set the registry address', async () => {
+    it('Should allow the owner to set the registry address', async () => {
       const setTx = await bm.connect(owner).setKeeperRegistryAddress(newAddress)
       await setTx.wait()
       const address = await bm.getKeeperRegistryAddress()

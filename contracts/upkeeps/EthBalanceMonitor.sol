@@ -123,6 +123,43 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
   }
 
   /**
+   * @notice Adds an address to the watch list
+   * @param _address the addresses to watch
+   * @param _minBalanceWei the minimum balance
+   * @param _topUpAmountWei the amount to top up
+   */
+  function addAddressToWatchList(address _address, uint256 _minBalanceWei, uint256 _topUpAmountWei) external onlyOwner {
+    require(!accountConfigs[_address].isActive, "address is already on watchlist");
+    s_watchList.push(_address);
+    accountConfigs[_address] = Config({
+      isActive: true,
+      minBalanceWei: _minBalanceWei,
+      topUpAmountWei: _topUpAmountWei,
+      lastTopUp: 0
+    });
+  }
+
+  /**
+   * @notice Removes an address from the watch list
+   * @param _address the address to remove
+   */
+  function removeAddressFromWatchList(address _address) external onlyOwner {
+    require(accountConfigs[_address].isActive, "address is not on watchlist");
+    accountConfigs[_address].isActive = false;
+    address[] memory oldWatchList = s_watchList;
+    address[] memory newWatchList = new address[](oldWatchList.length - 1);
+    uint256 jdx = 0;
+    for (uint256 idx = 0; idx < oldWatchList.length; idx++) {
+      if (oldWatchList[idx] == _address) {
+        continue;
+      }
+      newWatchList[jdx] = oldWatchList[idx];
+      jdx++;
+    }
+    s_watchList = newWatchList;
+  }
+
+  /**
    * @notice Gets configuration information for an address
    */
   function getAccountInfo(address target) public view
