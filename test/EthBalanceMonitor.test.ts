@@ -7,6 +7,7 @@ import { EthBalanceMonitorExposed__factory as EthBalanceMonitorFactory } from '.
 import { ReceiveReverter__factory as ReceiveReverterFactory } from '../typechain/factories/ReceiveReverter__factory'
 import { BigNumberish, BigNumber } from 'ethers'
 
+const zeroEth = ethers.utils.parseEther('0')
 const oneEth = ethers.utils.parseEther('1')
 const twoEth = ethers.utils.parseEther('2')
 const threeEth = ethers.utils.parseEther('3')
@@ -97,7 +98,7 @@ describe('EthBalanceMonitor', () => {
         to: bm.address,
         value: oneEth,
       })
-      expect(tx).to.emit(bm, 'FundsAdded').withArgs(oneEth)
+      await expect(tx).to.emit(bm, 'FundsAdded').withArgs(oneEth)
     })
   })
 
@@ -366,7 +367,27 @@ describe('EthBalanceMonitor', () => {
       await setTx.wait()
     })
 
-    context('when funded', () => {
+    context('when partially funded', () => {
+      it('Should fund as many addresses as possible', async () => {
+        const fundTx = await owner.sendTransaction({
+          to: bm.address,
+          value: fiveEth, // only enough eth to fund 2 addresses
+        })
+        await fundTx.wait()
+        await assertWatchlistBalances(0, 0, 0, 0, 10_000, 10_000)
+        const performTx = await bm
+          .connect(keeperRegistry)
+          .performUpkeep(validPayload)
+        await assertWatchlistBalances(2, 2, 0, 0, 10_000, 10_000)
+        await expect(performTx)
+          .to.emit(bm, 'TopUpSucceeded')
+          .withArgs(watchAddress1)
+          .to.emit(bm, 'TopUpSucceeded')
+          .withArgs(watchAddress2)
+      })
+    })
+
+    context('when fully funded', () => {
       beforeEach(async () => {
         const fundTx = await owner.sendTransaction({
           to: bm.address,
@@ -379,7 +400,7 @@ describe('EthBalanceMonitor', () => {
         await assertWatchlistBalances(0, 0, 0, 0, 10_000, 10_000)
         const performTx = await bm
           .connect(keeperRegistry)
-          .performUpkeep(validPayload)
+          .performUpkeep(validPayload, { gasLimit: 2_500_000 })
         await performTx.wait()
         await assertWatchlistBalances(2, 2, 2, 0, 10_000, 10_000)
       })
@@ -388,7 +409,7 @@ describe('EthBalanceMonitor', () => {
         await assertWatchlistBalances(0, 0, 0, 0, 10_000, 10_000)
         const performTx = await bm
           .connect(keeperRegistry)
-          .performUpkeep(invalidPayload)
+          .performUpkeep(invalidPayload, { gasLimit: 2_500_000 })
         await performTx.wait()
         await assertWatchlistBalances(2, 2, 0, 0, 10_000, 10_000)
       })
@@ -414,13 +435,15 @@ describe('EthBalanceMonitor', () => {
         )
         const performTx = await bm
           .connect(keeperRegistry)
-          .performUpkeep(payload)
+          .performUpkeep(payload, { gasLimit: 2_500_000 })
         await performTx.wait()
         await assertWatchlistBalances(2, 2, 0, 0, 10_000, 10_000)
         await assertBalance(receiveReverter.address, 0)
-        expect(performTx).to.emit(bm, 'TopUpSucceeded').withArgs(watchAddress1)
-        expect(performTx).to.emit(bm, 'TopUpSucceeded').withArgs(watchAddress2)
-        expect(performTx)
+        await expect(performTx)
+          .to.emit(bm, 'TopUpSucceeded')
+          .withArgs(watchAddress1)
+          .to.emit(bm, 'TopUpSucceeded')
+          .withArgs(watchAddress2)
           .to.emit(bm, 'TopUpFailed')
           .withArgs(receiveReverter.address)
       })
@@ -437,7 +460,7 @@ describe('EthBalanceMonitor', () => {
         await assertWatchlistBalances(0, 0, 0, 0, 10_000, 10_000)
         const performTx = await bm
           .connect(keeperRegistry)
-          .performUpkeep(validPayload)
+          .performUpkeep(validPayload, { gasLimit: 2_500_000 })
         await performTx.wait()
         await assertWatchlistBalances(2, 0, 2, 0, 10_000, 10_000)
       })
@@ -449,12 +472,21 @@ describe('EthBalanceMonitor', () => {
         performTx = bm.connect(stranger).performUpkeep(validPayload)
         await expect(performTx).to.be.revertedWith(revertReason)
       })
-    })
 
-    // it('Should revert if there is not enough eth', async () => {
-    //   const revertReason = 'not enough eth to fund all addresses'
-    //   const performTx = bm.connect(keeperRegistry).performUpkeep(validPayload)
-    //   await expect(performTx).to.be.revertedWith(revertReason)
-    // })
+      it('Should protect against running out of gas', async () => {
+        await assertWatchlistBalances(0, 0, 0, 0, 10_000, 10_000)
+        const performTx = await bm
+          .connect(keeperRegistry)
+          .performUpkeep(validPayload, { gasLimit: 200_000 }) // takes about 70K gas per transfer
+        await performTx.wait()
+        const balance1 = await ethers.provider.getBalance(watchAddress1)
+        const balance2 = await ethers.provider.getBalance(watchAddress2)
+        const balance3 = await ethers.provider.getBalance(watchAddress3)
+        const balances = [balance1, balance2, balance3].map((n) => n.toString())
+        expect(balances)
+          .to.include(twoEth.toString()) // expect at least 1 transfer
+          .to.include(zeroEth.toString()) // expect at least 1 out of funds
+      })
+    })
   })
 })

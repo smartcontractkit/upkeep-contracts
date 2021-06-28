@@ -8,6 +8,8 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 
 contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
 
+  uint256 constant MIN_GAS_FOR_TRANSFER = 70000;
+
   event FundsAdded (
     uint256 newBalance
   );
@@ -149,6 +151,9 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
         } else {
           emit TopUpFailed(needsFunding[idx]);
         }
+      }
+      if (gasleft() < MIN_GAS_FOR_TRANSFER) {
+        return;
       }
     }
   }
