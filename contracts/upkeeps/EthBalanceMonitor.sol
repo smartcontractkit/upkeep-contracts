@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+
 pragma solidity 0.8.6;
 
 import "../interfaces/KeeperCompatibleInterface.sol";
@@ -185,10 +186,9 @@ contract EthBalanceMonitor is Ownable, Pausable, KeeperCompatibleInterface {
 
   /**
    * @notice Checks list of addresses for those that require funding
-   * @param _checkData unused but needed to conform to keeper API
    * @return upkeepNeeded signals if upkeep is needed, performData is an abi encoded list of addresses that need funds
    */
-  function checkUpkeep(bytes calldata _checkData) override view public
+  function checkUpkeep(bytes calldata) override view public
     returns (
       bool upkeepNeeded,
       bytes memory performData
