@@ -5,11 +5,13 @@ pragma solidity 0.8.6;
 import "../upkeeps/EthBalanceMonitor.sol";
 
 contract EthBalanceMonitorExposed is EthBalanceMonitor {
-  constructor(address _keeperRegistryAddress, uint256 _minWaitPeriod)
-    EthBalanceMonitor(_keeperRegistryAddress, _minWaitPeriod)
+  constructor(address keeperRegistryAddress, uint256 minWaitPeriod)
+    EthBalanceMonitor(keeperRegistryAddress, minWaitPeriod)
   {}
 
-  function setLastTopUpXXXTestOnly(address _address, uint256 _lastTopUp) public {
-    accountConfigs[_address].lastTopUp = _lastTopUp;
+  function setLastTopUpXXXTestOnly(address target, uint56 lastTopUpBlock)
+    external
+  {
+    s_targets[target].lastTopUpBlock = lastTopUpBlock;
   }
 }
