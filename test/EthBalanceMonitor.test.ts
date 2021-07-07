@@ -3,10 +3,16 @@ import { assert, expect } from 'chai'
 import type { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
 import { EthBalanceMonitorExposed } from '../typechain/EthBalanceMonitorExposed'
 import { ReceiveReverter } from '../typechain/ReceiveReverter'
+import { ReceiveEmitter } from '../typechain/ReceiveEmitter'
+import { ReceiveFallbackEmitter } from '../typechain/ReceiveFallbackEmitter'
 import { BigNumber } from 'ethers'
 import { EthBalanceMonitorExposed__factory as EthBalanceMonitorFactory } from '../typechain/factories/EthBalanceMonitorExposed__factory'
 import { ReceiveReverter__factory as ReceiveReverterFactory } from '../typechain/factories/ReceiveReverter__factory'
+import { ReceiveEmitter__factory as ReceiveEmitterFactory } from '../typechain/factories/ReceiveEmitter__factory'
+import { ReceiveFallbackEmitter__factory as ReceiveFallbackEmitterFactory } from '../typechain/factories/ReceiveFallbackEmitter__factory'
 import * as h from './helpers'
+
+const OWNABLE_ERR = 'Only callable by owner'
 
 const zeroEth = ethers.utils.parseEther('0')
 const oneEth = ethers.utils.parseEther('1')
@@ -22,12 +28,6 @@ const watchAddress3 = ethers.Wallet.createRandom().address
 const watchAddress4 = ethers.Wallet.createRandom().address
 let watchAddress5: string
 let watchAddress6: string
-
-let bm: EthBalanceMonitorExposed
-let receiveReverter: ReceiveReverter
-let owner: SignerWithAddress
-let stranger: SignerWithAddress
-let keeperRegistry: SignerWithAddress
 
 async function assertWatchlistBalances(
   balance1: number,
@@ -46,7 +46,13 @@ async function assertWatchlistBalances(
   await h.assertBalance(watchAddress6, toEth(balance6), 'address 6')
 }
 
-const OWNABLE_ERR = 'Only callable by owner'
+let bm: EthBalanceMonitorExposed
+let receiveReverter: ReceiveReverter
+let receiveEmitter: ReceiveEmitter
+let receiveFallbackEmitter: ReceiveFallbackEmitter
+let owner: SignerWithAddress
+let stranger: SignerWithAddress
+let keeperRegistry: SignerWithAddress
 
 beforeEach(async () => {
   const accounts = await ethers.getSigners()
@@ -57,11 +63,18 @@ beforeEach(async () => {
   watchAddress6 = accounts[4].address
   const bmFactory = new EthBalanceMonitorFactory(owner)
   const rrFactory = new ReceiveReverterFactory(owner)
+  const reFactory = new ReceiveEmitterFactory(owner)
+  const rfeFactory = new ReceiveFallbackEmitterFactory(owner)
   bm = await bmFactory.deploy(keeperRegistry.address, 0)
   receiveReverter = await rrFactory.deploy()
-  receiveReverter = await rrFactory.deploy()
-  await bm.deployed()
-  await receiveReverter.deployed()
+  receiveEmitter = await reFactory.deploy()
+  receiveFallbackEmitter = await rfeFactory.deploy()
+  await Promise.all([
+    bm.deployed(),
+    receiveReverter.deployed(),
+    receiveEmitter.deployed(),
+    receiveFallbackEmitter.deployed(),
+  ])
 })
 
 describe('EthBalanceMonitor', () => {
@@ -400,6 +413,7 @@ describe('EthBalanceMonitor', () => {
         await expect(performTx)
           .to.emit(bm, 'TopUpSucceeded')
           .withArgs(watchAddress1)
+        await expect(performTx)
           .to.emit(bm, 'TopUpSucceeded')
           .withArgs(watchAddress2)
       })
@@ -460,8 +474,10 @@ describe('EthBalanceMonitor', () => {
         await expect(performTx)
           .to.emit(bm, 'TopUpSucceeded')
           .withArgs(watchAddress1)
+        await expect(performTx)
           .to.emit(bm, 'TopUpSucceeded')
           .withArgs(watchAddress2)
+        await expect(performTx)
           .to.emit(bm, 'TopUpFailed')
           .withArgs(receiveReverter.address)
       })
@@ -504,6 +520,38 @@ describe('EthBalanceMonitor', () => {
         expect(balances)
           .to.include(twoEth.toString()) // expect at least 1 transfer
           .to.include(zeroEth.toString()) // expect at least 1 out of funds
+      })
+
+      it('Should provide enough gas to support receive and fallback functions', async () => {
+        const addresses = [
+          receiveEmitter.address,
+          receiveFallbackEmitter.address,
+        ]
+        const payload = ethers.utils.defaultAbiCoder.encode(
+          ['address[]'],
+          [addresses],
+        )
+        const setTx = await bm
+          .connect(owner)
+          .setWatchList(
+            addresses,
+            new Array(2).fill(oneEth),
+            new Array(2).fill(twoEth),
+          )
+        await setTx.wait()
+        const performTx = await bm
+          .connect(keeperRegistry)
+          .performUpkeep(payload, { gasLimit: 2_500_000 })
+        await expect(performTx)
+          .to.emit(bm, 'TopUpSucceeded')
+          .withArgs(receiveEmitter.address)
+        await expect(performTx)
+          .to.emit(bm, 'TopUpSucceeded')
+          .withArgs(receiveFallbackEmitter.address)
+        await expect(performTx).to.changeEtherBalances(
+          [receiveEmitter, receiveFallbackEmitter],
+          [twoEth, twoEth],
+        )
       })
     })
   })
