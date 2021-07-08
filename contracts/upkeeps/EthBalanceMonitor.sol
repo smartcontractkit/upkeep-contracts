@@ -30,7 +30,7 @@ contract EthBalanceMonitor is
   );
 
   error UnequalListLengths();
-  error PermissionDenied();
+  error OnlyKeeper();
   error DuplicateAddress(address duplicate);
 
   struct Target {
@@ -92,34 +92,6 @@ contract EthBalanceMonitor is
   }
 
   /**
-   * @notice Sends funds to the addresses provided
-   * @param needsFunding the list of addresses to fund
-   */
-  function topUp(address[] memory needsFunding) public onlyKeeperOrOwner() {
-    uint256 minWaitPeriod = s_minWaitPeriod;
-    Target memory target;
-    for (uint256 idx = 0; idx < needsFunding.length; idx++) {
-      target = s_targets[needsFunding[idx]];
-      if (
-        target.isActive &&
-        target.lastTopUpBlock + minWaitPeriod <= block.number &&
-        needsFunding[idx].balance < target.minBalanceWei
-      ) {
-        bool success = payable(needsFunding[idx]).send(target.topUpAmountWei);
-        if (success) {
-          s_targets[needsFunding[idx]].lastTopUpBlock = uint56(block.number);
-          emit TopUpSucceeded(needsFunding[idx]);
-        } else {
-          emit TopUpFailed(needsFunding[idx]);
-        }
-      }
-      if (gasleft() < MIN_GAS_FOR_TRANSFER) {
-        return;
-      }
-    }
-  }
-
-  /**
    * @notice Gets a list of addresses that are under funded
    * @return list of addresses that are underfunded
    */
@@ -148,6 +120,34 @@ contract EthBalanceMonitor is
       }
     }
     return needsFunding;
+  }
+
+  /**
+   * @notice Send funds to the addresses provided
+   * @param needsFunding the list of addresses to fund
+   */
+  function topUp(address[] memory needsFunding) private {
+    uint256 minWaitPeriod = s_minWaitPeriod;
+    Target memory target;
+    for (uint256 idx = 0; idx < needsFunding.length; idx++) {
+      target = s_targets[needsFunding[idx]];
+      if (
+        target.isActive &&
+        target.lastTopUpBlock + minWaitPeriod <= block.number &&
+        needsFunding[idx].balance < target.minBalanceWei
+      ) {
+        bool success = payable(needsFunding[idx]).send(target.topUpAmountWei);
+        if (success) {
+          s_targets[needsFunding[idx]].lastTopUpBlock = uint56(block.number);
+          emit TopUpSucceeded(needsFunding[idx]);
+        } else {
+          emit TopUpFailed(needsFunding[idx]);
+        }
+      }
+      if (gasleft() < MIN_GAS_FOR_TRANSFER) {
+        return;
+      }
+    }
   }
 
   /**
@@ -287,14 +287,7 @@ contract EthBalanceMonitor is
 
   modifier onlyKeeper() {
     if (msg.sender != s_keeperRegistryAddress) {
-      revert PermissionDenied();
-    }
-    _;
-  }
-
-  modifier onlyKeeperOrOwner() {
-    if (msg.sender != s_keeperRegistryAddress && msg.sender != owner()) {
-      revert PermissionDenied();
+      revert OnlyKeeper();
     }
     _;
   }
