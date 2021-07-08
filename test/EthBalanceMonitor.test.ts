@@ -274,28 +274,32 @@ describe('EthBalanceMonitor', () => {
     })
   })
 
-  describe('getMinWaitPeriod / setMinWaitPeriod()', () => {
+  describe('getMinWaitPeriodSeconds / setMinWaitPeriodSeconds()', () => {
     const newWaitPeriod = BigNumber.from(1)
 
     it('Should initialize with the wait period provided to the constructor', async () => {
-      const minWaitPeriod = await bm.getMinWaitPeriod()
+      const minWaitPeriod = await bm.getMinWaitPeriodSeconds()
       expect(minWaitPeriod).to.equal(0)
     })
 
     it('Should allow owner to set the wait period', async () => {
-      const setTx = await bm.connect(owner).setMinWaitPeriod(newWaitPeriod)
+      const setTx = await bm
+        .connect(owner)
+        .setMinWaitPeriodSeconds(newWaitPeriod)
       await setTx.wait()
-      const minWaitPeriod = await bm.getMinWaitPeriod()
+      const minWaitPeriod = await bm.getMinWaitPeriodSeconds()
       expect(minWaitPeriod).to.equal(newWaitPeriod)
     })
 
     it('Should not allow strangers to set the wait period', async () => {
-      const setTx = bm.connect(stranger).setMinWaitPeriod(newWaitPeriod)
+      const setTx = bm.connect(stranger).setMinWaitPeriodSeconds(newWaitPeriod)
       await expect(setTx).to.be.revertedWith(OWNABLE_ERR)
     })
 
     it('Should emit an event', async () => {
-      const setTx = await bm.connect(owner).setMinWaitPeriod(newWaitPeriod)
+      const setTx = await bm
+        .connect(owner)
+        .setMinWaitPeriodSeconds(newWaitPeriod)
       await expect(setTx)
         .to.emit(bm, 'MinWaitPeriodUpdated')
         .withArgs(0, newWaitPeriod)
@@ -352,16 +356,16 @@ describe('EthBalanceMonitor', () => {
     })
 
     it('Should omit addresses that have been funded recently', async () => {
-      const setWaitPdTx = await bm.setMinWaitPeriod(5)
+      const setWaitPdTx = await bm.setMinWaitPeriodSeconds(3600) // 1 hour
       const fundTx = await owner.sendTransaction({
         to: bm.address,
         value: sixEth,
       })
       await Promise.all([setWaitPdTx.wait(), fundTx.wait()])
-      const blockNum = await ethers.provider.getBlockNumber()
+      const block = await ethers.provider.getBlock('latest')
       const setTopUpTx = await bm.setLastTopUpXXXTestOnly(
         watchAddress2,
-        blockNum - 1,
+        block.timestamp - 100,
       )
       await setTopUpTx.wait()
       const [should, payload] = await bm.checkUpkeep('0x')
@@ -487,12 +491,12 @@ describe('EthBalanceMonitor', () => {
       })
 
       it('Should not fund addresses that have been funded recently', async () => {
-        const setWaitPdTx = await bm.setMinWaitPeriod(5)
+        const setWaitPdTx = await bm.setMinWaitPeriodSeconds(3600) // 1 hour
         await setWaitPdTx.wait()
-        const blockNum = await ethers.provider.getBlockNumber()
+        const block = await ethers.provider.getBlock('latest')
         const setTopUpTx = await bm.setLastTopUpXXXTestOnly(
           watchAddress2,
-          blockNum - 1,
+          block.timestamp - 100,
         )
         await setTopUpTx.wait()
         await assertWatchlistBalances(0, 0, 0, 0, 10_000, 10_000)

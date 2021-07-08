@@ -37,23 +37,23 @@ contract EthBalanceMonitor is
     bool isActive;
     uint96 minBalanceWei;
     uint96 topUpAmountWei;
-    uint56 lastTopUpBlock;
+    uint56 lastTopUpTimestamp; // enough space for 2 trillion years
   }
 
   address private s_keeperRegistryAddress;
-  uint256 private s_minWaitPeriod;
+  uint256 private s_minWaitPeriodSeconds;
   address[] private s_watchList;
   mapping(address => Target) internal s_targets;
 
   /**
    * @param keeperRegistryAddress The address of the keeper registry contract
-   * @param minWaitPeriod The minimum wait period for addresses between funding
+   * @param minWaitPeriodSeconds The minimum wait period for addresses between funding
    */
-  constructor(address keeperRegistryAddress, uint256 minWaitPeriod)
+  constructor(address keeperRegistryAddress, uint256 minWaitPeriodSeconds)
     ConfirmedOwner(msg.sender)
   {
     setKeeperRegistryAddress(keeperRegistryAddress);
-    setMinWaitPeriod(minWaitPeriod);
+    setMinWaitPeriodSeconds(minWaitPeriodSeconds);
   }
 
   /**
@@ -85,7 +85,7 @@ contract EthBalanceMonitor is
         isActive: true,
         minBalanceWei: minBalancesWei[idx],
         topUpAmountWei: topUpAmountsWei[idx],
-        lastTopUpBlock: 0
+        lastTopUpTimestamp: 0
       });
     }
     s_watchList = addresses;
@@ -99,13 +99,13 @@ contract EthBalanceMonitor is
     address[] memory watchList = s_watchList;
     address[] memory needsFunding = new address[](watchList.length);
     uint256 count = 0;
-    uint256 minWaitPeriod = s_minWaitPeriod;
+    uint256 minWaitPeriod = s_minWaitPeriodSeconds;
     uint256 balance = address(this).balance;
     Target memory target;
     for (uint256 idx = 0; idx < watchList.length; idx++) {
       target = s_targets[watchList[idx]];
       if (
-        target.lastTopUpBlock + minWaitPeriod <= block.number &&
+        target.lastTopUpTimestamp + minWaitPeriod <= block.timestamp &&
         balance >= target.topUpAmountWei &&
         watchList[idx].balance < target.minBalanceWei
       ) {
@@ -127,18 +127,20 @@ contract EthBalanceMonitor is
    * @param needsFunding the list of addresses to fund
    */
   function topUp(address[] memory needsFunding) private {
-    uint256 minWaitPeriod = s_minWaitPeriod;
+    uint256 minWaitPeriodSeconds = s_minWaitPeriodSeconds;
     Target memory target;
     for (uint256 idx = 0; idx < needsFunding.length; idx++) {
       target = s_targets[needsFunding[idx]];
       if (
         target.isActive &&
-        target.lastTopUpBlock + minWaitPeriod <= block.number &&
+        target.lastTopUpTimestamp + minWaitPeriodSeconds <= block.timestamp &&
         needsFunding[idx].balance < target.minBalanceWei
       ) {
         bool success = payable(needsFunding[idx]).send(target.topUpAmountWei);
         if (success) {
-          s_targets[needsFunding[idx]].lastTopUpBlock = uint56(block.number);
+          s_targets[needsFunding[idx]].lastTopUpTimestamp = uint56(
+            block.timestamp
+          );
           emit TopUpSucceeded(needsFunding[idx]);
         } else {
           emit TopUpFailed(needsFunding[idx]);
@@ -217,11 +219,11 @@ contract EthBalanceMonitor is
   }
 
   /**
-   * @notice Sets the minimum wait period for addresses between funding
+   * @notice Sets the minimum wait period (in seconds) for addresses between funding
    */
-  function setMinWaitPeriod(uint256 minWaitPeriod) public onlyOwner() {
-    emit MinWaitPeriodUpdated(s_minWaitPeriod, minWaitPeriod);
-    s_minWaitPeriod = minWaitPeriod;
+  function setMinWaitPeriodSeconds(uint256 period) public onlyOwner() {
+    emit MinWaitPeriodUpdated(s_minWaitPeriodSeconds, period);
+    s_minWaitPeriodSeconds = period;
   }
 
   /**
@@ -238,8 +240,8 @@ contract EthBalanceMonitor is
   /**
    * @notice Gets the minimum wait period
    */
-  function getMinWaitPeriod() external view returns (uint256 minWaitPeriod) {
-    return s_minWaitPeriod;
+  function getMinWaitPeriodSeconds() external view returns (uint256) {
+    return s_minWaitPeriodSeconds;
   }
 
   /**
@@ -259,7 +261,7 @@ contract EthBalanceMonitor is
       bool isActive,
       uint256 minBalanceWei,
       uint256 topUpAmountWei,
-      uint256 lastTopUpBlock
+      uint256 lastTopUpTimestamp
     )
   {
     Target memory target = s_targets[targetAddress];
@@ -267,7 +269,7 @@ contract EthBalanceMonitor is
       target.isActive,
       target.minBalanceWei,
       target.topUpAmountWei,
-      target.lastTopUpBlock
+      target.lastTopUpTimestamp
     );
   }
 
