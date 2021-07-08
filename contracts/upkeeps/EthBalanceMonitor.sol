@@ -30,7 +30,7 @@ contract EthBalanceMonitor is
   );
 
   error UnequalListLengths();
-  error OnlyKeeper();
+  error PermissionDenied();
   error DuplicateAddress(address duplicate);
 
   struct Target {
@@ -92,15 +92,38 @@ contract EthBalanceMonitor is
   }
 
   /**
-   * @notice Checks list of addresses for those that require funding
-   * @return upkeepNeeded signals if upkeep is needed, performData is an abi encoded list of addresses that need funds
+   * @notice Sends funds to the addresses provided
+   * @param needsFunding the list of addresses to fund
    */
-  function checkUpkeep(bytes calldata)
-    external
-    view
-    override
-    returns (bool upkeepNeeded, bytes memory performData)
-  {
+  function topUp(address[] memory needsFunding) public onlyKeeperOrOwner() {
+    uint256 minWaitPeriod = s_minWaitPeriod;
+    Target memory target;
+    for (uint256 idx = 0; idx < needsFunding.length; idx++) {
+      target = s_targets[needsFunding[idx]];
+      if (
+        target.isActive &&
+        target.lastTopUpBlock + minWaitPeriod <= block.number &&
+        needsFunding[idx].balance < target.minBalanceWei
+      ) {
+        bool success = payable(needsFunding[idx]).send(target.topUpAmountWei);
+        if (success) {
+          s_targets[needsFunding[idx]].lastTopUpBlock = uint56(block.number);
+          emit TopUpSucceeded(needsFunding[idx]);
+        } else {
+          emit TopUpFailed(needsFunding[idx]);
+        }
+      }
+      if (gasleft() < MIN_GAS_FOR_TRANSFER) {
+        return;
+      }
+    }
+  }
+
+  /**
+   * @notice Gets a list of addresses that are under funded
+   * @return list of addresses that are underfunded
+   */
+  function getUnderfundedAddresses() public view returns (address[] memory) {
     address[] memory watchList = s_watchList;
     address[] memory needsFunding = new address[](watchList.length);
     uint256 count = 0;
@@ -124,45 +147,37 @@ contract EthBalanceMonitor is
         mstore(needsFunding, count)
       }
     }
-    upkeepNeeded = count > 0;
+    return needsFunding;
+  }
+
+  /**
+   * @notice Get list of addresses that are underfunded and return keeper-compatible payload
+   * @return upkeepNeeded signals if upkeep is needed, performData is an abi encoded list of addresses that need funds
+   */
+  function checkUpkeep(bytes calldata)
+    external
+    view
+    override
+    returns (bool upkeepNeeded, bytes memory performData)
+  {
+    address[] memory needsFunding = getUnderfundedAddresses();
+    upkeepNeeded = needsFunding.length > 0;
     performData = abi.encode(needsFunding);
     return (upkeepNeeded, performData);
   }
 
   /**
-   * @notice Sends fund to the addresses specified in performData
+   * @notice Called by keeper to send funds to underfunded addresses
    * @param performData The abi encoded list of addresses to fund
    */
   function performUpkeep(bytes calldata performData)
     external
     override
+    onlyKeeper()
     whenNotPaused()
   {
-    if (msg.sender != s_keeperRegistryAddress) {
-      revert OnlyKeeper();
-    }
     address[] memory needsFunding = abi.decode(performData, (address[]));
-    uint256 minWaitPeriod = s_minWaitPeriod;
-    Target memory target;
-    for (uint256 idx = 0; idx < needsFunding.length; idx++) {
-      target = s_targets[needsFunding[idx]];
-      if (
-        target.isActive &&
-        target.lastTopUpBlock + minWaitPeriod <= block.number &&
-        needsFunding[idx].balance < target.minBalanceWei
-      ) {
-        bool success = payable(needsFunding[idx]).send(target.topUpAmountWei);
-        if (success) {
-          s_targets[needsFunding[idx]].lastTopUpBlock = uint56(block.number);
-          emit TopUpSucceeded(needsFunding[idx]);
-        } else {
-          emit TopUpFailed(needsFunding[idx]);
-        }
-      }
-      if (gasleft() < MIN_GAS_FOR_TRANSFER) {
-        return;
-      }
-    }
+    topUp(needsFunding);
   }
 
   /**
@@ -268,5 +283,19 @@ contract EthBalanceMonitor is
    */
   function unpause() external onlyOwner() {
     _unpause();
+  }
+
+  modifier onlyKeeper() {
+    if (msg.sender != s_keeperRegistryAddress) {
+      revert PermissionDenied();
+    }
+    _;
+  }
+
+  modifier onlyKeeperOrOwner() {
+    if (msg.sender != s_keeperRegistryAddress && msg.sender != owner()) {
+      revert PermissionDenied();
+    }
+    _;
   }
 }
