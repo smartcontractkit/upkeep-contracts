@@ -127,7 +127,7 @@ contract EthBalanceMonitor is
 
   /**
    * @notice Send funds to the addresses provided
-   * @param needsFunding the list of addresses to fund
+   * @param needsFunding the list of addresses to fund (addresses must be pre-approved)
    */
   function topUp(address[] memory needsFunding) private {
     uint256 minWaitPeriodSeconds = s_minWaitPeriodSeconds;
