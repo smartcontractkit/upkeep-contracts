@@ -24,3 +24,8 @@ yarn compile
 ```
 yarn test
 ```
+
+### Slither
+```
+yarn static-check
+```
