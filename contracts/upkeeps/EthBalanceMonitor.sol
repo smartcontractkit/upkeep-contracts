@@ -29,7 +29,7 @@ contract EthBalanceMonitor is
     uint256 newMinWaitPeriod
   );
 
-  error UnequalListLengths();
+  error InvalidWatchList();
   error OnlyKeeper();
   error DuplicateAddress(address duplicate);
 
@@ -71,7 +71,7 @@ contract EthBalanceMonitor is
       addresses.length != minBalancesWei.length ||
       addresses.length != topUpAmountsWei.length
     ) {
-      revert UnequalListLengths();
+      revert InvalidWatchList();
     }
     address[] memory oldWatchList = s_watchList;
     for (uint256 idx = 0; idx < oldWatchList.length; idx++) {
@@ -80,6 +80,9 @@ contract EthBalanceMonitor is
     for (uint256 idx = 0; idx < addresses.length; idx++) {
       if (s_targets[addresses[idx]].isActive) {
         revert DuplicateAddress(addresses[idx]);
+      }
+      if (addresses[idx] == address(0)) {
+        revert InvalidWatchList();
       }
       s_targets[addresses[idx]] = Target({
         isActive: true,

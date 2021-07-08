@@ -14,6 +14,7 @@ import * as h from './helpers'
 
 const OWNABLE_ERR = 'Only callable by owner'
 const ONLY_KEEPER_ERR = `reverted with custom error 'OnlyKeeper()'`
+const INVALID_WATCHLIST_ERR = `reverted with custom error 'InvalidWatchList()'`
 const PAUSED_ERR = 'Pausable: paused'
 
 const zeroEth = ethers.utils.parseEther('0')
@@ -244,6 +245,26 @@ describe('EthBalanceMonitor', () => {
         .connect(stranger)
         .setWatchList([watchAddress1], [oneEth], [twoEth])
       await expect(setTxStranger).to.be.revertedWith(OWNABLE_ERR)
+    })
+
+    it('Should revert if the list lengths differ', async () => {
+      let tx = bm.connect(owner).setWatchList([watchAddress1], [], [twoEth])
+      await expect(tx).to.be.revertedWith(INVALID_WATCHLIST_ERR)
+      tx = bm.connect(owner).setWatchList([watchAddress1], [oneEth], [])
+      await expect(tx).to.be.revertedWith(INVALID_WATCHLIST_ERR)
+      tx = bm.connect(owner).setWatchList([], [oneEth], [twoEth])
+      await expect(tx).to.be.revertedWith(INVALID_WATCHLIST_ERR)
+    })
+
+    it('Should revert if any of the addresses are empty', async () => {
+      let tx = bm
+        .connect(owner)
+        .setWatchList(
+          [watchAddress1, ethers.constants.AddressZero],
+          [oneEth, oneEth],
+          [twoEth, twoEth],
+        )
+      await expect(tx).to.be.revertedWith(INVALID_WATCHLIST_ERR)
     })
   })
 
