@@ -160,6 +160,7 @@ contract EthBalanceMonitor is
     external
     view
     override
+    whenNotPaused()
     returns (bool upkeepNeeded, bytes memory performData)
   {
     address[] memory needsFunding = getUnderfundedAddresses();

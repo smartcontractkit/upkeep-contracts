@@ -14,6 +14,7 @@ import * as h from './helpers'
 
 const OWNABLE_ERR = 'Only callable by owner'
 const ONLY_KEEPER_ERR = `reverted with custom error 'OnlyKeeper()'`
+const PAUSED_ERR = 'Pausable: paused'
 
 const zeroEth = ethers.utils.parseEther('0')
 const oneEth = ethers.utils.parseEther('1')
@@ -376,6 +377,13 @@ describe('EthBalanceMonitor', () => {
       )
       assert.deepEqual(addresses, [watchAddress1, watchAddress3])
     })
+
+    it('Should revert when paused', async () => {
+      const tx = await bm.connect(owner).pause()
+      await tx.wait()
+      const ethCall = bm.checkUpkeep('0x')
+      await expect(ethCall).to.be.revertedWith(PAUSED_ERR)
+    })
   })
 
   describe('performUpkeep()', () => {
@@ -404,6 +412,13 @@ describe('EthBalanceMonitor', () => {
         new Array(5).fill(twoEth),
       )
       await setTx.wait()
+    })
+
+    it('Should revert when paused', async () => {
+      const pauseTx = await bm.connect(owner).pause()
+      await pauseTx.wait()
+      const performTx = bm.connect(keeperRegistry).performUpkeep(validPayload)
+      await expect(performTx).to.be.revertedWith(PAUSED_ERR)
     })
 
     context('when partially funded', () => {
