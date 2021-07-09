@@ -30,7 +30,7 @@ contract EthBalanceMonitor is
   );
 
   error InvalidWatchList();
-  error OnlyKeeper();
+  error PermissionDenied();
   error DuplicateAddress(address duplicate);
 
   struct Target {
@@ -129,7 +129,11 @@ contract EthBalanceMonitor is
    * @notice Send funds to the addresses provided
    * @param needsFunding the list of addresses to fund (addresses must be pre-approved)
    */
-  function topUp(address[] memory needsFunding) private {
+  function topUp(address[] memory needsFunding)
+    public
+    onlyKeeperOrOwner()
+    whenNotPaused()
+  {
     uint256 minWaitPeriodSeconds = s_minWaitPeriodSeconds;
     Target memory target;
     for (uint256 idx = 0; idx < needsFunding.length; idx++) {
@@ -293,7 +297,14 @@ contract EthBalanceMonitor is
 
   modifier onlyKeeper() {
     if (msg.sender != s_keeperRegistryAddress) {
-      revert OnlyKeeper();
+      revert PermissionDenied();
+    }
+    _;
+  }
+
+  modifier onlyKeeperOrOwner() {
+    if (msg.sender != s_keeperRegistryAddress && msg.sender != owner()) {
+      revert PermissionDenied();
     }
     _;
   }

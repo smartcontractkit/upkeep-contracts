@@ -13,9 +13,9 @@ import { ReceiveFallbackEmitter__factory as ReceiveFallbackEmitterFactory } from
 import * as h from './helpers'
 
 const OWNABLE_ERR = 'Only callable by owner'
-const ONLY_KEEPER_ERR = `reverted with custom error 'OnlyKeeper()'`
 const INVALID_WATCHLIST_ERR = `reverted with custom error 'InvalidWatchList()'`
 const PAUSED_ERR = 'Pausable: paused'
+const PERMISSION_DENIED_ERR = `reverted with custom error 'PermissionDenied()'`
 
 const zeroEth = ethers.utils.parseEther('0')
 const oneEth = ethers.utils.parseEther('1')
@@ -545,9 +545,9 @@ describe('EthBalanceMonitor', () => {
 
       it('Should only be callable by the keeper registry contract', async () => {
         let performTx = bm.connect(owner).performUpkeep(validPayload)
-        await expect(performTx).to.be.revertedWith(ONLY_KEEPER_ERR)
+        await expect(performTx).to.be.revertedWith(PERMISSION_DENIED_ERR)
         performTx = bm.connect(stranger).performUpkeep(validPayload)
-        await expect(performTx).to.be.revertedWith(ONLY_KEEPER_ERR)
+        await expect(performTx).to.be.revertedWith(PERMISSION_DENIED_ERR)
       })
 
       it('Should protect against running out of gas', async () => {
@@ -596,6 +596,15 @@ describe('EthBalanceMonitor', () => {
           [twoEth, twoEth],
         )
       })
+    })
+  })
+
+  describe('topUp()', () => {
+    it('Should only be callable by the owner or keeper', async () => {
+      await bm.connect(owner).topUp([])
+      await bm.connect(keeperRegistry).topUp([])
+      const tx = bm.connect(stranger).topUp([])
+      await expect(tx).to.be.revertedWith(PERMISSION_DENIED_ERR)
     })
   })
 })
