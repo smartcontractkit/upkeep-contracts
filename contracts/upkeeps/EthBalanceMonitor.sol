@@ -19,7 +19,7 @@ contract EthBalanceMonitor is
   // observed limit of 45K + 10k buffer
   uint256 private constant MIN_GAS_FOR_TRANSFER = 55_000;
 
-  event FundsAdded(uint256 amountAdded, uint256 newBalance);
+  event FundsAdded(uint256 amountAdded, uint256 newBalance, address sender);
   event FundsWithdrawn(uint256 amountWithdrawn, address payee);
   event TopUpSucceeded(address indexed recipient);
   event TopUpFailed(address indexed recipient);
@@ -204,7 +204,7 @@ contract EthBalanceMonitor is
    * @notice Receive funds
    */
   receive() external payable {
-    emit FundsAdded(msg.value, address(this).balance);
+    emit FundsAdded(msg.value, address(this).balance, msg.sender);
   }
 
   /**

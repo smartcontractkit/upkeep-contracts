@@ -83,29 +83,28 @@ beforeEach(async () => {
 describe('EthBalanceMonitor', () => {
   describe('receive()', () => {
     it('Should allow anyone to add funds', async () => {
-      const tx = await owner.sendTransaction({
+      await owner.sendTransaction({
         to: bm.address,
         value: oneEth,
       })
-      await tx.wait()
-      const tx2 = await stranger.sendTransaction({
+      await stranger.sendTransaction({
         to: bm.address,
         value: oneEth,
       })
-      await tx2.wait()
     })
 
     it('Should emit an event', async () => {
-      const tx1 = await owner.sendTransaction({
+      await owner.sendTransaction({
         to: bm.address,
         value: oneEth,
       })
-      await tx1.wait()
-      const tx2 = await owner.sendTransaction({
+      const tx = stranger.sendTransaction({
         to: bm.address,
         value: oneEth,
       })
-      await expect(tx2).to.emit(bm, 'FundsAdded').withArgs(oneEth, twoEth)
+      await expect(tx)
+        .to.emit(bm, 'FundsAdded')
+        .withArgs(oneEth, twoEth, stranger.address)
     })
   })
 
