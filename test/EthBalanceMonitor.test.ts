@@ -15,7 +15,7 @@ import * as h from './helpers'
 const OWNABLE_ERR = 'Only callable by owner'
 const INVALID_WATCHLIST_ERR = `reverted with custom error 'InvalidWatchList()'`
 const PAUSED_ERR = 'Pausable: paused'
-const ONLY_KEEPER_ERR = `reverted with custom error 'OnlyKeeper()'`
+const ONLY_KEEPER_ERR = `reverted with custom error 'OnlyKeeperRegistry()'`
 
 const zeroEth = ethers.utils.parseEther('0')
 const oneEth = ethers.utils.parseEther('1')
@@ -262,6 +262,17 @@ describe('EthBalanceMonitor', () => {
           [watchAddress1, ethers.constants.AddressZero],
           [oneEth, oneEth],
           [twoEth, twoEth],
+        )
+      await expect(tx).to.be.revertedWith(INVALID_WATCHLIST_ERR)
+    })
+
+    it('Should revert if any of the top up amounts are 0', async () => {
+      const tx = bm
+        .connect(owner)
+        .setWatchList(
+          [watchAddress1, watchAddress2],
+          [oneEth, oneEth],
+          [twoEth, zeroEth],
         )
       await expect(tx).to.be.revertedWith(INVALID_WATCHLIST_ERR)
     })
