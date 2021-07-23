@@ -95,10 +95,13 @@ contract EthBalanceMonitor is
   }
 
   /**
-   * @notice Gets a list of addresses that are under funded
+   * @notice Gets a list of addresses that meet the following criteria:
+   *         * underfunded
+   *         * requires a top up amount less than the balance of this contract
+   *         * last funding event was longer than the wait period
    * @return list of addresses that are underfunded
    */
-  function getUnderfundedAddresses() public view returns (address[] memory) {
+  function getFundableAddresses() public view returns (address[] memory) {
     address[] memory watchList = s_watchList;
     address[] memory needsFunding = new address[](watchList.length);
     uint256 count = 0;
@@ -115,6 +118,31 @@ contract EthBalanceMonitor is
         needsFunding[count] = watchList[idx];
         count++;
         balance -= target.topUpAmountWei;
+      }
+    }
+    if (count != watchList.length) {
+      assembly {
+        mstore(needsFunding, count)
+      }
+    }
+    return needsFunding;
+  }
+
+  /**
+   * @notice Gets a list of addresses that are under funded, regardless wait period
+   * and whether or not this contract has sufficient funds to send them
+   * @return list of addresses that are underfunded
+   */
+  function getUnderfundedAddresses() public view returns (address[] memory) {
+    address[] memory watchList = s_watchList;
+    address[] memory needsFunding = new address[](watchList.length);
+    uint256 count = 0;
+    Target memory target;
+    for (uint256 idx = 0; idx < watchList.length; idx++) {
+      target = s_targets[watchList[idx]];
+      if (watchList[idx].balance < target.minBalanceWei) {
+        needsFunding[count] = watchList[idx];
+        count++;
       }
     }
     if (count != watchList.length) {
@@ -166,7 +194,7 @@ contract EthBalanceMonitor is
     whenNotPaused()
     returns (bool upkeepNeeded, bytes memory performData)
   {
-    address[] memory needsFunding = getUnderfundedAddresses();
+    address[] memory needsFunding = getFundableAddresses();
     upkeepNeeded = needsFunding.length > 0;
     performData = abi.encode(needsFunding);
     return (upkeepNeeded, performData);

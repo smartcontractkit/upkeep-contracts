@@ -327,7 +327,7 @@ describe('EthBalanceMonitor', () => {
     })
   })
 
-  describe('checkUpkeep() / getUnderfundedAddresses()', () => {
+  describe('checkUpkeep() / getFundableAddresses() / getUnderfundedAddresses()', () => {
     beforeEach(async () => {
       const setTx = await bm.connect(owner).setWatchList(
         [
@@ -344,11 +344,10 @@ describe('EthBalanceMonitor', () => {
     })
 
     it('Should return list of address that are underfunded', async () => {
-      const fundTx = await owner.sendTransaction({
+      await owner.sendTransaction({
         to: bm.address,
         value: sixEth, // needs 6 total
       })
-      await fundTx.wait()
       const [should, payload] = await bm.checkUpkeep('0x')
       assert.isTrue(should)
       let [addresses] = ethers.utils.defaultAbiCoder.decode(
@@ -356,33 +355,35 @@ describe('EthBalanceMonitor', () => {
         payload,
       )
       assert.deepEqual(addresses, [watchAddress1, watchAddress2, watchAddress3])
-      // checkUpkeep payload should match getUnderfundedAddresses()
+      // checkUpkeep payload should match getFundableAddresses() and getUnderfundedAddresses()
+      addresses = await bm.getFundableAddresses()
+      assert.deepEqual(addresses, [watchAddress1, watchAddress2, watchAddress3])
       addresses = await bm.getUnderfundedAddresses()
       assert.deepEqual(addresses, [watchAddress1, watchAddress2, watchAddress3])
     })
 
     it('Should return some results even if contract cannot fund all eligible targets', async () => {
-      const fundTx = await owner.sendTransaction({
+      await owner.sendTransaction({
         to: bm.address,
         value: fiveEth, // needs 6 total
       })
-      await fundTx.wait()
       const [should, payload] = await bm.checkUpkeep('0x')
       assert.isTrue(should)
-      const [addresses] = ethers.utils.defaultAbiCoder.decode(
+      let [addresses] = ethers.utils.defaultAbiCoder.decode(
         ['address[]'],
         payload,
       )
       assert.deepEqual(addresses, [watchAddress1, watchAddress2])
+      addresses = await bm.getUnderfundedAddresses()
+      assert.deepEqual(addresses, [watchAddress1, watchAddress2, watchAddress3])
     })
 
     it('Should omit addresses that have been funded recently', async () => {
-      const setWaitPdTx = await bm.setMinWaitPeriodSeconds(3600) // 1 hour
-      const fundTx = await owner.sendTransaction({
+      await bm.setMinWaitPeriodSeconds(3600) // 1 hour
+      await owner.sendTransaction({
         to: bm.address,
         value: sixEth,
       })
-      await Promise.all([setWaitPdTx.wait(), fundTx.wait()])
       const block = await ethers.provider.getBlock('latest')
       const setTopUpTx = await bm.setLastTopUpXXXTestOnly(
         watchAddress2,
@@ -391,18 +392,28 @@ describe('EthBalanceMonitor', () => {
       await setTopUpTx.wait()
       const [should, payload] = await bm.checkUpkeep('0x')
       assert.isTrue(should)
-      const [addresses] = ethers.utils.defaultAbiCoder.decode(
+      let [addresses] = ethers.utils.defaultAbiCoder.decode(
         ['address[]'],
         payload,
       )
       assert.deepEqual(addresses, [watchAddress1, watchAddress3])
+      addresses = await bm.getUnderfundedAddresses()
+      assert.deepEqual(addresses, [watchAddress1, watchAddress2, watchAddress3])
     })
 
     it('Should revert when paused', async () => {
+      await owner.sendTransaction({
+        to: bm.address,
+        value: sixEth, // needs 6 total
+      })
       const tx = await bm.connect(owner).pause()
       await tx.wait()
       const ethCall = bm.checkUpkeep('0x')
       await expect(ethCall).to.be.revertedWith(PAUSED_ERR)
+      let addresses = await bm.getFundableAddresses()
+      assert.deepEqual(addresses, [watchAddress1, watchAddress2, watchAddress3])
+      addresses = await bm.getUnderfundedAddresses()
+      assert.deepEqual(addresses, [watchAddress1, watchAddress2, watchAddress3])
     })
   })
 
