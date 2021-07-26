@@ -30,7 +30,7 @@ contract EthBalanceMonitor is
   );
 
   error InvalidWatchList();
-  error OnlyKeeper();
+  error OnlyKeeperRegistry();
   error DuplicateAddress(address duplicate);
 
   struct Target {
@@ -82,6 +82,9 @@ contract EthBalanceMonitor is
         revert DuplicateAddress(addresses[idx]);
       }
       if (addresses[idx] == address(0)) {
+        revert InvalidWatchList();
+      }
+      if (topUpAmountsWei[idx] == 0) {
         revert InvalidWatchList();
       }
       s_targets[addresses[idx]] = Target({
@@ -179,7 +182,7 @@ contract EthBalanceMonitor is
   function performUpkeep(bytes calldata performData)
     external
     override
-    onlyKeeper()
+    onlyKeeperRegistry()
     whenNotPaused()
   {
     address[] memory needsFunding = abi.decode(performData, (address[]));
@@ -263,9 +266,9 @@ contract EthBalanceMonitor is
     view
     returns (
       bool isActive,
-      uint256 minBalanceWei,
-      uint256 topUpAmountWei,
-      uint256 lastTopUpTimestamp
+      uint96 minBalanceWei,
+      uint96 topUpAmountWei,
+      uint56 lastTopUpTimestamp
     )
   {
     Target memory target = s_targets[targetAddress];
@@ -291,9 +294,9 @@ contract EthBalanceMonitor is
     _unpause();
   }
 
-  modifier onlyKeeper() {
+  modifier onlyKeeperRegistry() {
     if (msg.sender != s_keeperRegistryAddress) {
-      revert OnlyKeeper();
+      revert OnlyKeeperRegistry();
     }
     _;
   }
