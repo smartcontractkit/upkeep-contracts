@@ -8,7 +8,6 @@
   "scripts": {
     "compile": "hardhat compile",
     "format": "prettier --write 'contracts/**/*.sol' 'test/**/*.ts'",
-    "static-check": "slither .",
     "test": "hardhat test"
   },
   "dependencies": {

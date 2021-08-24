@@ -1,6 +1,6 @@
 # Upkeep Contracts
 
-This repo contains keeper-compatible contracts that serve various use cases. Warning: the slither static analysis requires some massaging to get working.
+This repo contains keeper-compatible contracts that serve various use cases.
 
 ### Requirements
 ```
@@ -10,22 +10,32 @@ solc 0.8.6 (for slither)
 ```
 
 ### Install Dependencies
-```
+```bash
 yarn install
 pip3 install -r requirements.txt
 ```
 
 ### Compile
-```
+```bash
 yarn compile
 ```
 
 ### Run tests
-```
+```bash
 yarn test
 ```
 
-### Slither
+### Slither Static Analysis
+
+Warning: the slither static analysis requires some massaging to get working.
+
+```bash
+slither .
 ```
-yarn static-check
+
+### Flatten
+
+```bash
+# replace MyUpkeepContract
+yarn --silent run hardhat flatten ./contracts/upkeeps/MyUpkeepContract.sol > MyUpkeepContract.flattened.sol
 ```
