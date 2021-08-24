@@ -3,7 +3,6 @@
 pragma solidity 0.8.6;
 
 import "../interfaces/KeeperCompatibleInterface.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@chainlink/contracts/src/v0.8/dev/ConfirmedOwner.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
