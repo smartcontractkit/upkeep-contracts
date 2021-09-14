@@ -10,14 +10,15 @@
         "bracketSpacing": false,
         "explicitTypes": "always"
       }
-    }, {
+    },
+    {
       "files": "*.ts",
       "options": {
         "semi": false,
         "singleQuote": true,
         "printWidth": 80,
         "endOfLine": "auto",
-        "trailingComma": "all",
+        "trailingComma": "all"
       }
     }
   ]

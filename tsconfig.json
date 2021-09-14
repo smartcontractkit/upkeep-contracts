@@ -11,13 +11,5 @@
     "sourceMap": true,
     "strict": true,
     "target": "es5"
-  },
-  "exclude": ["node_modules"],
-  "include": [
-    "artifacts/**/*",
-    "artifacts/**/*.json",
-    "test/**/*",
-    "typechain/**/*",
-    "hardhat.config.ts"
-  ]
+  }
 }
