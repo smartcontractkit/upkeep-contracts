@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 /*
-  The CronUtility contract serves two primary functions:
+  The CronUtility_Internal contract serves two primary functions:
     * parsing cron-formatted strings like "0 0 * * *" into
       structs called "Specs"
     * computing the "next tick" of a cron spec
@@ -84,7 +84,7 @@ struct Field {
  * abstraction called a Spec. The library also includes a spec function, nextTick(), which
  * determines the next time a cron job should fire based on the current block timestamp.
  */
-library CronUtility {
+library CronUtility_Internal {
   using strings for *;
 
   /**

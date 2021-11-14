@@ -1,25 +1,27 @@
+import moment from 'moment'
 import { ethers } from 'hardhat'
 import { assert, expect } from 'chai'
 import { CronUpkeepTestHelper } from '../typechain/CronUpkeepTestHelper'
-import { CronUtilityTestHelper } from '../typechain/CronUtilityTestHelper'
+import { CronUtilityInternalTestHelper } from '../typechain/CronUtilityInternalTestHelper'
+import { CronUtilityExternal__factory as CronUtilityExternalFactory } from '../typechain/factories/CronUtilityExternal__factory'
 import { CronReceiver } from '../typechain/CronReceiver'
-import moment from 'moment'
-
+import { BigNumber, BigNumberish } from '@ethersproject/bignumber'
 import type { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
 import * as h from './helpers'
-import { BigNumber, BigNumberish } from '@ethersproject/bignumber'
 
 const { utils } = ethers
+const { AddressZero } = ethers.constants
 
 const OWNABLE_ERR = 'Only callable by owner'
 const CALL_FAILED_ERR = 'CallFailed'
 const CRON_NOT_FOUNR_ERR = 'CronJobIDNotFound'
 
 let cron: CronUpkeepTestHelper
-let cronUtilityTestHelper: CronUtilityTestHelper
+let cronUtilityTestHelper: CronUtilityInternalTestHelper
 let cronReceiver1: CronReceiver
 let cronReceiver2: CronReceiver
 
+let admin: SignerWithAddress
 let owner: SignerWithAddress
 let stranger: SignerWithAddress
 
@@ -77,26 +79,37 @@ async function createBasicCron() {
 describe('CronUpkeep', () => {
   beforeEach(async () => {
     const accounts = await ethers.getSigners()
+    admin = accounts[0]
     owner = accounts[1]
     stranger = accounts[2]
     const crFactory = await ethers.getContractFactory('CronReceiver', owner)
     cronReceiver1 = await crFactory.deploy()
     cronReceiver2 = await crFactory.deploy()
+    const cronDelegateFactory = await ethers.getContractFactory(
+      'CronUpkeepDelegate',
+      admin,
+    )
+    const cronDelegate = await cronDelegateFactory.deploy()
+    const cronUtilityExternalFactory = new CronUtilityExternalFactory(admin)
+    const cronUtilityExternalLib = await cronUtilityExternalFactory.deploy()
     const cronFactory = await ethers.getContractFactory(
       'CronUpkeepTestHelper',
-      owner,
+      {
+        signer: admin,
+        libraries: { CronUtility_External: cronUtilityExternalLib.address },
+      },
     )
-    cron = await cronFactory.deploy()
+    cron = (
+      await cronFactory.deploy(owner.address, cronDelegate.address)
+    ).connect(owner)
     const fs = cronReceiver1.interface.functions
-    handler1Sig = utils
-      .id(fs['handler1()'].format('sighash')) // TODO this seems like an ethers bug
-      .slice(0, 10)
+    handler1Sig = utils.id(fs['handler1()'].format('sighash')).slice(0, 10) // TODO this seems like an ethers bug
     handler2Sig = utils.id(fs['handler2()'].format('sighash')).slice(0, 10)
     revertHandlerSig = utils
       .id(fs['revertHandler()'].format('sighash'))
       .slice(0, 10)
     const cronUtilityTHFactory = await ethers.getContractFactory(
-      'CronUtilityTestHelper',
+      'CronUtilityInternalTestHelper',
     )
     cronUtilityTestHelper = await cronUtilityTHFactory.deploy()
     basicSpec = await cron.cronStringToEncodedSpec('0 * * * *')
@@ -127,7 +140,7 @@ describe('CronUpkeep', () => {
   })
 
   describe('constructor()', () => {
-    it('sets the owner to the deployer', async () => {
+    it('sets the owner to the address provided', async () => {
       expect(await cron.owner()).to.equal(owner.address)
     })
   })
@@ -163,13 +176,17 @@ describe('CronUpkeep', () => {
 
     describe('checkUpkeep()', () => {
       it('returns false if no one is elligible', async () => {
-        const [needsUpkeep] = await cron.checkUpkeep('0x')
+        const [needsUpkeep] = await cron
+          .connect(AddressZero)
+          .callStatic.checkUpkeep('0x')
         assert.isFalse(needsUpkeep)
       })
 
       it('returns the id of eligible cron jobs', async () => {
         await h.fastForward(moment.duration(11, 'minutes').asSeconds())
-        const [needsUpkeep, payload] = await cron.checkUpkeep('0x')
+        const [needsUpkeep, payload] = await cron
+          .connect(AddressZero)
+          .callStatic.checkUpkeep('0x')
         assert.isTrue(needsUpkeep)
         const [id, ..._] = decodePayload(payload)
         assert.equal(id.toNumber(), 2)
@@ -178,16 +195,24 @@ describe('CronUpkeep', () => {
       describe('when mutiple crons are elligible', () => {
         it('cycles through the cron IDs based on block number', async () => {
           await h.fastForward(moment.duration(1, 'year').asSeconds())
-          let [_, payload] = await cron.checkUpkeep('0x')
+          let [_, payload] = await cron
+            .connect(AddressZero)
+            .callStatic.checkUpkeep('0x')
           const [id1] = decodePayload(payload)
           await h.mineBlock()
-          ;[_, payload] = await cron.checkUpkeep('0x')
+          ;[_, payload] = await cron
+            .connect(AddressZero)
+            .callStatic.checkUpkeep('0x')
           const [id2] = decodePayload(payload)
           await h.mineBlock()
-          ;[_, payload] = await cron.checkUpkeep('0x')
+          ;[_, payload] = await cron
+            .connect(AddressZero)
+            .callStatic.checkUpkeep('0x')
           const [id3] = decodePayload(payload)
           await h.mineBlock()
-          ;[_, payload] = await cron.checkUpkeep('0x')
+          ;[_, payload] = await cron
+            .connect(AddressZero)
+            .callStatic.checkUpkeep('0x')
           const [id4] = decodePayload(payload)
           assert.deepEqual(
             [id1, id2, id3, id4].map((n) => n.toNumber()).sort(),
@@ -200,7 +225,9 @@ describe('CronUpkeep', () => {
     describe('performUpkeep()', () => {
       it('forwards the call to the appropriate target/handler', async () => {
         await h.fastForward(moment.duration(11, 'minutes').asSeconds())
-        const [needsUpkeep, payload] = await cron.checkUpkeep('0x')
+        const [needsUpkeep, payload] = await cron
+          .connect(AddressZero)
+          .callStatic.checkUpkeep('0x')
         assert.isTrue(needsUpkeep)
         await expect(cron.performUpkeep(payload)).to.emit(
           cronReceiver1,
@@ -210,7 +237,9 @@ describe('CronUpkeep', () => {
 
       it('emits an event', async () => {
         await h.fastForward(moment.duration(11, 'minutes').asSeconds())
-        const [needsUpkeep, payload] = await cron.checkUpkeep('0x')
+        const [needsUpkeep, payload] = await cron
+          .connect(AddressZero)
+          .callStatic.checkUpkeep('0x')
         assert.isTrue(needsUpkeep)
         await expect(cron.performUpkeep(payload)).to.emit(
           cron,
@@ -234,7 +263,9 @@ describe('CronUpkeep', () => {
 
       it('is only callable by anyone', async () => {
         await h.fastForward(moment.duration(11, 'minutes').asSeconds())
-        const [needsUpkeep, payload] = await cron.checkUpkeep('0x')
+        const [needsUpkeep, payload] = await cron
+          .connect(AddressZero)
+          .callStatic.checkUpkeep('0x')
         assert.isTrue(needsUpkeep)
         await cron.connect(stranger).performUpkeep(payload)
       })
@@ -378,14 +409,25 @@ describe('CronUpkeep', () => {
 describe('Cron Gas Usage', () => {
   before(async () => {
     const accounts = await ethers.getSigners()
+    admin = accounts[0]
     owner = accounts[1]
     const crFactory = await ethers.getContractFactory('CronReceiver', owner)
     cronReceiver1 = await crFactory.deploy()
-    const cronFactory = await ethers.getContractFactory(
-      'CronUpkeepTestHelper',
+    const cronDelegateFactory = await ethers.getContractFactory(
+      'CronUpkeepDelegate',
       owner,
     )
-    cron = await cronFactory.deploy()
+    const cronDelegate = await cronDelegateFactory.deploy()
+    const cronUtilityExternalFactory = new CronUtilityExternalFactory(admin)
+    const cronUtilityExternalLib = await cronUtilityExternalFactory.deploy()
+    const cronFactory = await ethers.getContractFactory(
+      'CronUpkeepTestHelper',
+      {
+        signer: owner,
+        libraries: { CronUtility_External: cronUtilityExternalLib.address },
+      },
+    )
+    cron = await cronFactory.deploy(owner.address, cronDelegate.address)
     const fs = cronReceiver1.interface.functions
     handler1Sig = utils
       .id(fs['handler1()'].format('sighash')) // TODO this seems like an ethers bug
@@ -403,7 +445,9 @@ describe('Cron Gas Usage', () => {
           cronString,
         )
         await h.fastForward(moment.duration(100, 'years').asSeconds()) // long enough that at least 1 tick occurs
-        const [needsUpkeep, data] = await cron.checkUpkeep('0x')
+        const [needsUpkeep, data] = await cron
+          .connect(AddressZero)
+          .callStatic.checkUpkeep('0x')
         assert.isTrue(needsUpkeep, `failed for cron string ${cronString}`)
         await cron.txCheckUpkeep('0x')
         await cron.performUpkeep(data)

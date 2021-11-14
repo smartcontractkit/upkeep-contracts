@@ -18,10 +18,14 @@
 
 pragma solidity 0.8.6;
 
-import "../interfaces/KeeperCompatibleInterface.sol";
 import "@chainlink/contracts/src/v0.8/dev/ConfirmedOwner.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-import {CronUtility, Spec} from "../libraries/CronUtility.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/proxy/Proxy.sol";
+import "./KeeperBase.sol";
+import "../interfaces/KeeperCompatibleInterface.sol";
+import {CronUtility_Internal, Spec} from "../libraries/CronUtility_Internal.sol";
+import {CronUtility_External} from "../libraries/CronUtility_External.sol";
 import {getRevertMsg} from "../utils/utils.sol";
 
 /**
@@ -30,10 +34,13 @@ import {getRevertMsg} from "../utils/utils.sol";
  * Users must use the encodeCronString() function to encode their cron jobs before
  * setting them. This keeps all the string manipulation off chain and reduces gas costs.
  */
-contract CronUpkeep is KeeperCompatibleInterface, ConfirmedOwner, Pausable {
-  using CronUtility for Spec;
-  using CronUtility for string;
-
+contract CronUpkeep is
+  KeeperCompatibleInterface,
+  KeeperBase,
+  ConfirmedOwner,
+  Pausable,
+  Proxy
+{
   event CronJobExecuted(uint256 indexed id, uint256 timestamp);
   event CronJobCreated(uint256 indexed id, address target, bytes handler);
   event CronJobDeleted(uint256 indexed id);
@@ -45,6 +52,7 @@ contract CronUpkeep is KeeperCompatibleInterface, ConfirmedOwner, Pausable {
   error TickTooOld();
   error TickDoesntMatchSpec();
 
+  address immutable s_delegate;
   uint256 private s_nextCronJobID = 1;
   uint256[] private s_activeCronJobIDs;
 
@@ -54,7 +62,13 @@ contract CronUpkeep is KeeperCompatibleInterface, ConfirmedOwner, Pausable {
   mapping(uint256 => bytes) private s_handlers;
   mapping(uint256 => bytes32) private s_handlerSignatures;
 
-  constructor() ConfirmedOwner(msg.sender) {}
+  /**
+   * @param owner the initial owner of the contract
+   * @param delegate the contract to delegate checkUpkeep calls to
+   */
+  constructor(address owner, address delegate) ConfirmedOwner(owner) {
+    s_delegate = delegate;
+  }
 
   /**
    * @notice Executes the cron job with id encoded in performData
@@ -141,42 +155,12 @@ contract CronUpkeep is KeeperCompatibleInterface, ConfirmedOwner, Pausable {
    */
   function checkUpkeep(bytes calldata)
     external
-    view
     override
     whenNotPaused
+    cannotExecute
     returns (bool, bytes memory)
   {
-    // DEV: start at a random spot in the list so that checks are
-    // spread evenly among cron jobs
-    uint256 numCrons = s_activeCronJobIDs.length;
-    uint256 startIdx = block.number % numCrons;
-    bool result;
-    bytes memory payload;
-    (result, payload) = checkInRange(startIdx, numCrons);
-    if (result) {
-      return (result, payload);
-    }
-    (result, payload) = checkInRange(0, startIdx);
-    if (result) {
-      return (result, payload);
-    }
-    return (false, bytes(""));
-  }
-
-  function checkInRange(uint256 start, uint256 end)
-    private
-    view
-    returns (bool, bytes memory)
-  {
-    uint256 id;
-    uint256 lastTick;
-    for (uint256 idx = start; idx < end; idx++) {
-      id = s_activeCronJobIDs[idx];
-      lastTick = s_specs[id].lastTick();
-      if (lastTick > s_lastRuns[id]) {
-        return (true, abi.encode(id, lastTick, s_targets[id], s_handlers[id]));
-      }
-    }
+    _delegate(s_delegate);
   }
 
   /**
@@ -209,8 +193,8 @@ contract CronUpkeep is KeeperCompatibleInterface, ConfirmedOwner, Pausable {
     return (
       s_targets[id],
       s_handlers[id],
-      spec.toCronString(),
-      spec.nextTick()
+      CronUtility_External.toCronString(spec),
+      CronUtility_External.nextTick(spec)
     );
   }
 
@@ -225,7 +209,7 @@ contract CronUpkeep is KeeperCompatibleInterface, ConfirmedOwner, Pausable {
     pure
     returns (bytes memory)
   {
-    return cronString.toEncodedSpec();
+    return CronUtility_External.toEncodedSpec(cronString);
   }
 
   /**
@@ -234,7 +218,6 @@ contract CronUpkeep is KeeperCompatibleInterface, ConfirmedOwner, Pausable {
    * @param handler the function signature on the target contract to call
    * @param spec the cron spec to create
    */
-
   function createCronJobFromSpec(
     address target,
     bytes memory handler,
@@ -251,6 +234,17 @@ contract CronUpkeep is KeeperCompatibleInterface, ConfirmedOwner, Pausable {
     emit CronJobCreated(newID, target, handler);
   }
 
+  function _implementation() internal view override returns (address) {
+    return s_delegate;
+  }
+
+  /**
+   * @notice validates the input to performUpkeep
+   * @param id the id of the cron job
+   * @param tickTime the observed tick time
+   * @param target the contract to forward the tx to
+   * @param handler the handler of the conract receiving the forwarded tx
+   */
   function validate(
     uint256 id,
     uint256 tickTime,
@@ -263,7 +257,7 @@ contract CronUpkeep is KeeperCompatibleInterface, ConfirmedOwner, Pausable {
     if (tickTime <= s_lastRuns[id]) {
       revert TickTooOld();
     }
-    if (!s_specs[id].matches(tickTime)) {
+    if (!CronUtility_Internal.matches(s_specs[id], tickTime)) {
       revert TickDoesntMatchSpec();
     }
     if (handlerSig(target, handler) != s_handlerSignatures[id]) {
@@ -271,6 +265,12 @@ contract CronUpkeep is KeeperCompatibleInterface, ConfirmedOwner, Pausable {
     }
   }
 
+  /**
+   * @notice returns a unique identifier for target/handler pairs
+   * @param target the contract to forward the tx to
+   * @param handler the handler of the conract receiving the forwarded tx
+   * @return a hash of the inputs
+   */
   function handlerSig(address target, bytes memory handler)
     private
     pure
