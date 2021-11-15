@@ -1,17 +1,36 @@
 name: CI
 on: [push]
 jobs:
-  build:
+  test:
     name: Test Contracts
     runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - uses: borales/actions-yarn@v2.0.0
-  #       with:
-  #         cmd: install
-  #     - uses: borales/actions-yarn@v2.0.0
-  #       with:
-  #         cmd: compile
-  #     - uses: borales/actions-yarn@v2.0.0
-  #       with:
-  #         cmd: test
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: "14.18.1"
+      - name: Setup Cache
+        uses: c-hive/gha-yarn-cache@v2
+      - name: install dependencies
+        run: yarn install
+      - name: compile contracts
+        run: yarn compile
+      - name: run tests
+        run: yarn test
+
+  test-gas:
+    name: Analyze Gas Usage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: "14.18.1"
+      - name: Setup Cache
+        uses: c-hive/gha-yarn-cache@v2
+      - name: install dependencies
+        run: yarn install
+      - name: compile contracts
+        run: yarn compile
+      - name: run gas tests
+        run: yarn test:gas

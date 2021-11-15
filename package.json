@@ -8,7 +8,8 @@
   "scripts": {
     "compile": "hardhat compile",
     "format": "prettier --write 'contracts/**/*.sol' 'test/**/*.ts'",
-    "test": "hardhat test"
+    "test": "hardhat test",
+    "test:gas": "hardhat --config hardhat.gasUsage.config.ts test"
   },
   "dependencies": {
     "@chainlink/contracts": "^0.2.0-rc1",
@@ -21,9 +22,12 @@
     "@types/mocha": "^8.2.2",
     "@types/node": "^15.12.2",
     "chai": "^4.3.4",
+    "deepmerge": "^4.2.2",
     "ethereum-waffle": "^3.3.0",
     "ethers": "^5.3.1",
     "hardhat": "^2.4.1",
+    "hardhat-gas-reporter": "^1.0.4",
+    "moment": "^2.29.1",
     "prettier": "^2.3.2",
     "prettier-plugin-solidity": "^1.0.0-beta.13",
     "ts-generator": "^0.1.1",

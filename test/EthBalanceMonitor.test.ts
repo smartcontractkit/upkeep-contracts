@@ -13,9 +13,9 @@ import { ReceiveFallbackEmitter__factory as ReceiveFallbackEmitterFactory } from
 import * as h from './helpers'
 
 const OWNABLE_ERR = 'Only callable by owner'
-const INVALID_WATCHLIST_ERR = `reverted with custom error 'InvalidWatchList()'`
+const INVALID_WATCHLIST_ERR = `InvalidWatchList()`
 const PAUSED_ERR = 'Pausable: paused'
-const ONLY_KEEPER_ERR = `reverted with custom error 'OnlyKeeperRegistry()'`
+const ONLY_KEEPER_ERR = `OnlyKeeperRegistry()`
 
 const zeroEth = ethers.utils.parseEther('0')
 const oneEth = ethers.utils.parseEther('1')
@@ -57,30 +57,30 @@ let owner: SignerWithAddress
 let stranger: SignerWithAddress
 let keeperRegistry: SignerWithAddress
 
-beforeEach(async () => {
-  const accounts = await ethers.getSigners()
-  owner = accounts[0]
-  stranger = accounts[1]
-  keeperRegistry = accounts[2]
-  watchAddress5 = accounts[3].address
-  watchAddress6 = accounts[4].address
-  const bmFactory = new EthBalanceMonitorFactory(owner)
-  const rrFactory = new ReceiveReverterFactory(owner)
-  const reFactory = new ReceiveEmitterFactory(owner)
-  const rfeFactory = new ReceiveFallbackEmitterFactory(owner)
-  bm = await bmFactory.deploy(keeperRegistry.address, 0)
-  receiveReverter = await rrFactory.deploy()
-  receiveEmitter = await reFactory.deploy()
-  receiveFallbackEmitter = await rfeFactory.deploy()
-  await Promise.all([
-    bm.deployed(),
-    receiveReverter.deployed(),
-    receiveEmitter.deployed(),
-    receiveFallbackEmitter.deployed(),
-  ])
-})
-
 describe('EthBalanceMonitor', () => {
+  beforeEach(async () => {
+    const accounts = await ethers.getSigners()
+    owner = accounts[0]
+    stranger = accounts[1]
+    keeperRegistry = accounts[2]
+    watchAddress5 = accounts[3].address
+    watchAddress6 = accounts[4].address
+    const bmFactory = new EthBalanceMonitorFactory(owner)
+    const rrFactory = new ReceiveReverterFactory(owner)
+    const reFactory = new ReceiveEmitterFactory(owner)
+    const rfeFactory = new ReceiveFallbackEmitterFactory(owner)
+    bm = await bmFactory.deploy(keeperRegistry.address, 0)
+    receiveReverter = await rrFactory.deploy()
+    receiveEmitter = await reFactory.deploy()
+    receiveFallbackEmitter = await rfeFactory.deploy()
+    await Promise.all([
+      bm.deployed(),
+      receiveReverter.deployed(),
+      receiveEmitter.deployed(),
+      receiveFallbackEmitter.deployed(),
+    ])
+  })
+
   describe('receive()', () => {
     it('Should allow anyone to add funds', async () => {
       await owner.sendTransaction({

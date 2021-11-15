@@ -1,4 +1,5 @@
 {
   "detectors_to_exclude": "assembly-usage,conformance-to-solidity-naming-conventions",
-  "filter_paths": "node_modules/|contracts/tests/"
+  "filter_paths": "node_modules/|contracts/tests/",
+  "hardhat_ignore_compile": true
 }

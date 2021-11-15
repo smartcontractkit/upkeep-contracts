@@ -1,8 +1,5 @@
-import { network } from 'hardhat'
+import * as h from './helpers'
 
 afterEach(async () => {
-  await network.provider.request({
-    method: 'hardhat_reset',
-    params: [],
-  })
+  await h.reset()
 })
