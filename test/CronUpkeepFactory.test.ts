@@ -10,7 +10,7 @@ let factory: CronUpkeepFactory
 let admin: SignerWithAddress
 let owner: SignerWithAddress
 
-describe.only('CronUpkeepFactory', () => {
+describe('CronUpkeepFactory', () => {
   beforeEach(async () => {
     const accounts = await ethers.getSigners()
     admin = accounts[0]
