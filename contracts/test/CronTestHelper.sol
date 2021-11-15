@@ -2,18 +2,15 @@
 
 pragma solidity 0.8.6;
 
-import {CronUtility_Internal, Spec as Spec_In} from "../libraries/CronUtility_Internal.sol";
-import {CronUtility_External, Spec as Spec_Ex} from "../libraries/CronUtility_External.sol";
+import {Cron as CronInternal, Spec} from "../libraries/internal/Cron.sol";
+import {Cron as CronExternal} from "../libraries/external/Cron.sol";
 
 /**
- * @title The CronUtilityInternalTestHelper contract
- * @notice This contract exposes core functionality of the CronUtility_Internal library.
+ * @title The CronInternalTestHelper contract
+ * @notice This contract exposes core functionality of the internal/Cron library.
  * It is only intended for use in tests.
  */
-contract CronUtilityInternalTestHelper {
-  using CronUtility_Internal for Spec_In;
-  using CronUtility_Internal for string;
-
+contract CronInternalTestHelper {
   /**
    * @notice Converts a cron string to a Spec, validates the spec, and encodes the spec.
    * This should only be called off-chain, as it is gas expensive!
@@ -25,7 +22,7 @@ contract CronUtilityInternalTestHelper {
     pure
     returns (bytes memory)
   {
-    return cronString.toEncodedSpec();
+    return CronInternal.toEncodedSpec(cronString);
   }
 
   /**
@@ -38,20 +35,20 @@ contract CronUtilityInternalTestHelper {
     pure
     returns (string memory)
   {
-    Spec_In memory spec = abi.decode(encodedSpec, (Spec_In));
-    return spec.toCronString();
+    Spec memory spec = abi.decode(encodedSpec, (Spec));
+    return CronInternal.toCronString(spec);
   }
 
   /**
    * @notice encodedSpecToString is a helper function for turning a string
    * into a spec struct.
    */
-  function cronStringToEncodedSpec(string memory cronString)
+  function cronStringtoEncodedSpec(string memory cronString)
     public
     pure
-    returns (Spec_In memory)
+    returns (Spec memory)
   {
-    return cronString.toSpec();
+    return CronInternal.toSpec(cronString);
   }
 
   /**
@@ -65,7 +62,7 @@ contract CronUtilityInternalTestHelper {
     view
     returns (uint256)
   {
-    return cronString.toSpec().nextTick();
+    return CronInternal.nextTick(CronInternal.toSpec(cronString));
   }
 
   /**
@@ -79,19 +76,16 @@ contract CronUtilityInternalTestHelper {
     view
     returns (uint256)
   {
-    return cronString.toSpec().lastTick();
+    return CronInternal.lastTick(CronInternal.toSpec(cronString));
   }
 }
 
 /**
- * @title The CronUtilityExternalTestHelper contract
- * @notice This contract exposes core functionality of the CronUtility_External library.
+ * @title The CronExternalTestHelper contract
+ * @notice This contract exposes core functionality of the external/Cron library.
  * It is only intended for use in tests.
  */
-contract CronUtilityExternalTestHelper {
-  using CronUtility_External for Spec_Ex;
-  using CronUtility_External for string;
-
+contract CronExternalTestHelper {
   /**
    * @notice Converts a cron string to a Spec, validates the spec, and encodes the spec.
    * This should only be called off-chain, as it is gas expensive!
@@ -103,7 +97,7 @@ contract CronUtilityExternalTestHelper {
     pure
     returns (bytes memory)
   {
-    return cronString.toEncodedSpec();
+    return CronExternal.toEncodedSpec(cronString);
   }
 
   /**
@@ -116,20 +110,20 @@ contract CronUtilityExternalTestHelper {
     pure
     returns (string memory)
   {
-    Spec_Ex memory spec = abi.decode(encodedSpec, (Spec_Ex));
-    return spec.toCronString();
+    Spec memory spec = abi.decode(encodedSpec, (Spec));
+    return CronExternal.toCronString(spec);
   }
 
   /**
    * @notice encodedSpecToString is a helper function for turning a string
    * into a spec struct.
    */
-  function cronStringToEncodedSpec(string memory cronString)
+  function cronStringtoEncodedSpec(string memory cronString)
     public
     pure
-    returns (Spec_Ex memory)
+    returns (Spec memory)
   {
-    return cronString.toSpec();
+    return CronExternal.toSpec(cronString);
   }
 
   /**
@@ -143,7 +137,7 @@ contract CronUtilityExternalTestHelper {
     view
     returns (uint256)
   {
-    return cronString.toSpec().nextTick();
+    return CronExternal.nextTick(CronExternal.toSpec(cronString));
   }
 
   /**
@@ -157,6 +151,6 @@ contract CronUtilityExternalTestHelper {
     view
     returns (uint256)
   {
-    return cronString.toSpec().lastTick();
+    return CronExternal.lastTick(CronExternal.toSpec(cronString));
   }
 }

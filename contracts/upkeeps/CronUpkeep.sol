@@ -24,8 +24,8 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/proxy/Proxy.sol";
 import "./KeeperBase.sol";
 import "../interfaces/KeeperCompatibleInterface.sol";
-import {CronUtility_Internal, Spec} from "../libraries/CronUtility_Internal.sol";
-import {CronUtility_External} from "../libraries/CronUtility_External.sol";
+import {Cron as CronInternal, Spec} from "../libraries/internal/Cron.sol";
+import {Cron as CronExternal} from "../libraries/external/Cron.sol";
 import {getRevertMsg} from "../utils/utils.sol";
 
 /**
@@ -193,8 +193,8 @@ contract CronUpkeep is
     return (
       s_targets[id],
       s_handlers[id],
-      CronUtility_External.toCronString(spec),
-      CronUtility_External.nextTick(spec)
+      CronExternal.toCronString(spec),
+      CronExternal.nextTick(spec)
     );
   }
 
@@ -209,7 +209,7 @@ contract CronUpkeep is
     pure
     returns (bytes memory)
   {
-    return CronUtility_External.toEncodedSpec(cronString);
+    return CronExternal.toEncodedSpec(cronString);
   }
 
   /**
@@ -257,7 +257,7 @@ contract CronUpkeep is
     if (tickTime <= s_lastRuns[id]) {
       revert TickTooOld();
     }
-    if (!CronUtility_Internal.matches(s_specs[id], tickTime)) {
+    if (!CronInternal.matches(s_specs[id], tickTime)) {
       revert TickDoesntMatchSpec();
     }
     if (handlerSig(target, handler) != s_handlerSignatures[id]) {

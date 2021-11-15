@@ -1,48 +1,52 @@
 import moment from 'moment'
 import { ethers } from 'hardhat'
 import { assert, expect } from 'chai'
-import { CronUtilityInternalTestHelper } from '../typechain/CronUtilityInternalTestHelper'
-import { CronUtilityExternalTestHelper } from '../typechain/CronUtilityExternalTestHelper'
-import { CronUtilityExternal__factory as CronUtilityExternalFactory } from '../typechain/factories/CronUtilityExternal__factory'
+import { CronInternalTestHelper } from '../typechain/CronInternalTestHelper'
+import { CronExternalTestHelper } from '../typechain/CronExternalTestHelper'
 import { validCrons, invalidCrons } from './fixtures'
 import * as h from './helpers'
 
-let cronUtility: CronUtilityInternalTestHelper | CronUtilityExternalTestHelper
-let cronUtilityInternal: CronUtilityInternalTestHelper
-let cronUtilityExternal: CronUtilityExternalTestHelper
+let cron: CronInternalTestHelper | CronExternalTestHelper
+let cronInternal: CronInternalTestHelper
+let cronExternal: CronExternalTestHelper
 
 const timeStamp = 32503680000 // Jan 1, 3000 12:00AM
 
-describe('CronUtility', () => {
+describe.only('Cron', () => {
   beforeEach(async () => {
     const accounts = await ethers.getSigners()
     const admin = accounts[1]
-    const cronUtilityInternalTestHelperFactory =
-      await ethers.getContractFactory('CronUtilityInternalTestHelper')
-    cronUtilityInternal = await cronUtilityInternalTestHelperFactory.deploy()
-    const cronUtilityExternalFactory = new CronUtilityExternalFactory(admin)
-    const cronUtilityExternalLib = await cronUtilityExternalFactory.deploy()
-    const cronUtilityExternalTestHelperFactory =
-      await ethers.getContractFactory('CronUtilityExternalTestHelper', {
+    const cronInternalTestHelperFactory = await ethers.getContractFactory(
+      'CronInternalTestHelper',
+    )
+    cronInternal = await cronInternalTestHelperFactory.deploy()
+    const cronExternalFactory = await ethers.getContractFactory(
+      'contracts/libraries/external/Cron.sol:Cron',
+      admin,
+    )
+    const cronExternalLib = await cronExternalFactory.deploy()
+    const cronExternalTestHelperFactory = await ethers.getContractFactory(
+      'CronExternalTestHelper',
+      {
         libraries: {
-          CronUtility_External: cronUtilityExternalLib.address,
+          Cron: cronExternalLib.address,
         },
-      })
-    cronUtilityExternal = await cronUtilityExternalTestHelperFactory.deploy()
+      },
+    )
+    cronExternal = await cronExternalTestHelperFactory.deploy()
   })
 
   for (let libType of ['Internal', 'External']) {
     describe(libType, () => {
       beforeEach(() => {
-        cronUtility =
-          libType === 'Internal' ? cronUtilityInternal : cronUtilityExternal
+        cron = libType === 'Internal' ? cronInternal : cronExternal
       })
 
       describe('encodeCronString() / encodedSpecToString()', () => {
         it('converts all valid cron strings to structs and back', async () => {
           const tests = validCrons.map(async (input) => {
-            const spec = await cronUtility.encodeCronString(input)
-            const output = await cronUtility.encodedSpecToString(spec)
+            const spec = await cron.encodeCronString(input)
+            const output = await cron.encodedSpecToString(spec)
             assert.equal(output, input)
           })
           await Promise.all(tests)
@@ -52,7 +56,7 @@ describe('CronUtility', () => {
           for (let idx = 0; idx < invalidCrons.length; idx++) {
             const input = invalidCrons[idx]
             await expect(
-              cronUtility.encodeCronString(input),
+              cron.encodeCronString(input),
               `expected ${input} to be invalid`,
             ).to.be.revertedWith('')
           }
@@ -96,10 +100,10 @@ describe('CronUtility', () => {
           for (let idx = 0; idx < tests.length; idx++) {
             const test = tests[idx]
             const nextTick = (
-              await cronUtility.calculateNextTick(test.cron)
+              await cron.calculateNextTick(test.cron)
             ).toNumber()
             const lastTick = (
-              await cronUtility.calculateLastTick(test.cron)
+              await cron.calculateLastTick(test.cron)
             ).toNumber()
             assert.equal(
               nextTick,

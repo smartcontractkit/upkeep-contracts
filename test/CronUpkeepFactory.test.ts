@@ -1,29 +1,31 @@
 import { ethers } from 'hardhat'
+import { Contract } from 'ethers'
 import { assert, expect } from 'chai'
 import { CronUpkeepFactory } from '../typechain/CronUpkeepFactory'
-import { CronUtilityExternal } from '../typechain/CronUtilityExternal'
-import { CronUtilityExternal__factory as CronUtilityExternalFactory } from '../typechain/factories/CronUtilityExternal__factory'
 import type { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
 
-let cronUtilityExternalLib: CronUtilityExternal
+let cronExternalLib: Contract
 let factory: CronUpkeepFactory
 
 let admin: SignerWithAddress
 let owner: SignerWithAddress
 
-describe('CronUpkeepFactory', () => {
+describe.only('CronUpkeepFactory', () => {
   beforeEach(async () => {
     const accounts = await ethers.getSigners()
     admin = accounts[0]
     owner = accounts[1]
-    const cronUtilityExternalFactory = new CronUtilityExternalFactory(admin)
-    cronUtilityExternalLib = await cronUtilityExternalFactory.deploy()
+    const cronExternalFactory = await ethers.getContractFactory(
+      'contracts/libraries/external/Cron.sol:Cron',
+      admin,
+    )
+    cronExternalLib = await cronExternalFactory.deploy()
     const cronUpkeepFactoryFactory = await ethers.getContractFactory(
       'CronUpkeepFactory',
       {
         signer: admin,
         libraries: {
-          CronUtility_External: cronUtilityExternalLib.address,
+          Cron: cronExternalLib.address,
         },
       },
     )
@@ -54,7 +56,7 @@ describe('CronUpkeepFactory', () => {
       }
       const upkeepAddress = events[0].args?.upkeep
       const cronUpkeepFactory = await ethers.getContractFactory('CronUpkeep', {
-        libraries: { CronUtility_External: cronUtilityExternalLib.address },
+        libraries: { Cron: cronExternalLib.address },
       })
       assert(
         await cronUpkeepFactory.attach(upkeepAddress).owner(),

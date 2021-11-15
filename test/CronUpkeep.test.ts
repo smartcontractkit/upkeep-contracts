@@ -2,8 +2,7 @@ import moment from 'moment'
 import { ethers } from 'hardhat'
 import { assert, expect } from 'chai'
 import { CronUpkeepTestHelper } from '../typechain/CronUpkeepTestHelper'
-import { CronUtilityInternalTestHelper } from '../typechain/CronUtilityInternalTestHelper'
-import { CronUtilityExternal__factory as CronUtilityExternalFactory } from '../typechain/factories/CronUtilityExternal__factory'
+import { CronInternalTestHelper } from '../typechain/CronInternalTestHelper'
 import { CronReceiver } from '../typechain/CronReceiver'
 import { BigNumber, BigNumberish } from '@ethersproject/bignumber'
 import type { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
@@ -17,7 +16,7 @@ const CALL_FAILED_ERR = 'CallFailed'
 const CRON_NOT_FOUNR_ERR = 'CronJobIDNotFound'
 
 let cron: CronUpkeepTestHelper
-let cronUtilityTestHelper: CronUtilityInternalTestHelper
+let cronTestHelper: CronInternalTestHelper
 let cronReceiver1: CronReceiver
 let cronReceiver2: CronReceiver
 
@@ -90,13 +89,16 @@ describe('CronUpkeep', () => {
       admin,
     )
     const cronDelegate = await cronDelegateFactory.deploy()
-    const cronUtilityExternalFactory = new CronUtilityExternalFactory(admin)
-    const cronUtilityExternalLib = await cronUtilityExternalFactory.deploy()
+    const cronExternalFactory = await ethers.getContractFactory(
+      'contracts/libraries/external/Cron.sol:Cron',
+      admin,
+    )
+    const cronExternalLib = await cronExternalFactory.deploy()
     const cronFactory = await ethers.getContractFactory(
       'CronUpkeepTestHelper',
       {
         signer: admin,
-        libraries: { CronUtility_External: cronUtilityExternalLib.address },
+        libraries: { Cron: cronExternalLib.address },
       },
     )
     cron = (
@@ -108,10 +110,10 @@ describe('CronUpkeep', () => {
     revertHandlerSig = utils
       .id(fs['revertHandler()'].format('sighash'))
       .slice(0, 10)
-    const cronUtilityTHFactory = await ethers.getContractFactory(
-      'CronUtilityInternalTestHelper',
+    const cronTHFactory = await ethers.getContractFactory(
+      'CronInternalTestHelper',
     )
-    cronUtilityTestHelper = await cronUtilityTHFactory.deploy()
+    cronTestHelper = await cronTHFactory.deploy()
     basicSpec = await cron.cronStringToEncodedSpec('0 * * * *')
   })
 
@@ -279,10 +281,10 @@ describe('CronUpkeep', () => {
       const encodedSpec1 = await cron.cronStringToEncodedSpec(cronString1)
       const encodedSpec2 = await cron.cronStringToEncodedSpec(cronString2)
       const nextTick1 = (
-        await cronUtilityTestHelper.calculateNextTick(cronString1)
+        await cronTestHelper.calculateNextTick(cronString1)
       ).toNumber()
       const nextTick2 = (
-        await cronUtilityTestHelper.calculateNextTick(cronString2)
+        await cronTestHelper.calculateNextTick(cronString2)
       ).toNumber()
       await cron.createCronJobFromEncodedSpec(
         cronReceiver1.address,
@@ -418,13 +420,16 @@ describe('Cron Gas Usage', () => {
       owner,
     )
     const cronDelegate = await cronDelegateFactory.deploy()
-    const cronUtilityExternalFactory = new CronUtilityExternalFactory(admin)
-    const cronUtilityExternalLib = await cronUtilityExternalFactory.deploy()
+    const cronExternalFactory = await ethers.getContractFactory(
+      'contracts/libraries/external/Cron.sol:Cron',
+      admin,
+    )
+    const cronExternalLib = await cronExternalFactory.deploy()
     const cronFactory = await ethers.getContractFactory(
       'CronUpkeepTestHelper',
       {
         signer: owner,
-        libraries: { CronUtility_External: cronUtilityExternalLib.address },
+        libraries: { Cron: cronExternalLib.address },
       },
     )
     cron = await cronFactory.deploy(owner.address, cronDelegate.address)

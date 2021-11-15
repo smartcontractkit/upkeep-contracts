@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 /*
-  The CronUtility_Internal contract serves two primary functions:
+  The Cron contract serves two primary functions:
     * parsing cron-formatted strings like "0 0 * * *" into
       structs called "Specs"
     * computing the "next tick" of a cron spec
@@ -33,8 +33,8 @@
 
 pragma solidity 0.8.6;
 
-import "../vendor/Strings.sol";
-import "../vendor/DateTime.sol";
+import "../../vendor/Strings.sol";
+import "../../vendor/DateTime.sol";
 
 // The fields of a cron spec, by name
 string constant MINUTE = "minute";
@@ -79,12 +79,12 @@ struct Field {
 }
 
 /**
- * @title The CronUtility library
+ * @title The Cron library
  * @notice A utility contract for encoding/decoding cron strings (ex: 0 0 * * *) into an
  * abstraction called a Spec. The library also includes a spec function, nextTick(), which
  * determines the next time a cron job should fire based on the current block timestamp.
  */
-library CronUtility_Internal {
+library Cron {
   using strings for *;
 
   /**
@@ -93,6 +93,7 @@ library CronUtility_Internal {
    * only be called off-chain.
    * @param spec the spec to evaluate
    * @return the next tick
+   * @dev this is the internal version of the library. There is also an external version.
    */
   function nextTick(Spec memory spec) internal view returns (uint256) {
     uint16 year = DateTime.getYear(block.timestamp);

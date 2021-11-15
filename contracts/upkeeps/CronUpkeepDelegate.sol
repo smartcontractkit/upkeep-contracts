@@ -2,7 +2,7 @@
 
 pragma solidity 0.8.6;
 
-import {CronUtility_Internal, Spec} from "../libraries/CronUtility_Internal.sol";
+import {Cron, Spec} from "../libraries/internal/Cron.sol";
 
 /**
  * @title The CronUpkeepDelegate contract
@@ -11,9 +11,7 @@ import {CronUtility_Internal, Spec} from "../libraries/CronUtility_Internal.sol"
  * of the CronUpkeep contracts.
  */
 contract CronUpkeepDelegate {
-  using CronUtility_Internal for Spec;
-
-  error NotImplemented();
+  using Cron for Spec;
 
   address private s_owner; // from ConfirmedOwner
   address private s_delegate;
@@ -30,7 +28,7 @@ contract CronUpkeepDelegate {
    * of the id and "next tick" of the elligible cron job
    */
   function checkUpkeep(bytes calldata)
-    public
+    external
     view
     returns (bool, bytes memory)
   {
