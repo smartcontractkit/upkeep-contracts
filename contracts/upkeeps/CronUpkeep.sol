@@ -130,7 +130,7 @@ contract CronUpkeep is
     delete s_targets[id];
     delete s_handlers[id];
     delete s_handlerSignatures[id];
-    delete s_activeCronJobIDs[id];
+    s_activeCronJobIDs.pop();
     emit CronJobDeleted(id);
   }
 
