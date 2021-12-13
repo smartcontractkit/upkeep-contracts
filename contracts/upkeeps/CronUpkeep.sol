@@ -22,7 +22,7 @@ import "@chainlink/contracts/src/v0.8/dev/ConfirmedOwner.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/proxy/Proxy.sol";
-import "@openzeppelin/contracts/utils/EnumerableSet.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "./KeeperBase.sol";
 import "../interfaces/KeeperCompatibleInterface.sol";
 import {Cron as CronInternal, Spec} from "../libraries/internal/Cron.sol";
