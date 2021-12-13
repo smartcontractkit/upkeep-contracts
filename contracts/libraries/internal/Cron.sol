@@ -321,7 +321,7 @@ library Cron {
   }
 
   /**
-   * @notice matches evaluates if a values matches a field.
+   * @notice matches evaluates if a value matches a field.
    * ex: 3 matches *, 3 matches 0-5, 3 does not match 0,2,4
    * @param field the field struct to match against
    * @param value the value of a field
@@ -361,7 +361,7 @@ library Cron {
   function validate(Spec memory spec) private pure returns (Spec memory) {
     validateField(spec.minute, MINUTE, 5, 0, 59);
     validateField(spec.hour, HOUR, 1, 0, 23);
-    validateField(spec.day, DAY, 1, 1, 31);
+    validateField(spec.day, DAY, 1, 1, DateTime.getDaysInMonth(spec.month, year)); // TODO: get year
     validateField(spec.month, MONTH, 1, 1, 12);
     validateField(spec.dayOfWeek, DAY_OF_WEEK, 1, 0, 6);
     return spec;
@@ -440,9 +440,8 @@ library Cron {
           revert InvalidField(fieldName, reason);
         }
       }
-    } else {
-      revert UnknownFieldType();
     }
+    revert UnknownFieldType();
   }
 
   /**

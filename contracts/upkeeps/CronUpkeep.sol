@@ -130,7 +130,7 @@ contract CronUpkeep is
     delete s_targets[id];
     delete s_handlers[id];
     delete s_handlerSignatures[id];
-    s_activeCronJobIDs.pop();
+    delete s_activeCronJobIDs[id];
     emit CronJobDeleted(id);
   }
 
@@ -151,7 +151,7 @@ contract CronUpkeep is
   /**
    * @notice Get the id of an eligible cron job
    * @return upkeepNeeded signals if upkeep is needed, performData is an abi encoding
-   * of the id and "next tick" of the elligible cron job
+   * of the id and "next tick" of the eligible cron job
    */
   function checkUpkeep(bytes calldata)
     external
@@ -189,6 +189,10 @@ contract CronUpkeep is
       uint256 nextTick
     )
   {
+    if (s_targets[id] == address(0)) {
+      revert CronJobIDNotFound(id);
+    }
+
     Spec memory spec = s_specs[id];
     return (
       s_targets[id],
@@ -243,7 +247,7 @@ contract CronUpkeep is
    * @param id the id of the cron job
    * @param tickTime the observed tick time
    * @param target the contract to forward the tx to
-   * @param handler the handler of the conract receiving the forwarded tx
+   * @param handler the handler of the contract receiving the forwarded tx
    */
   function validate(
     uint256 id,
@@ -268,7 +272,7 @@ contract CronUpkeep is
   /**
    * @notice returns a unique identifier for target/handler pairs
    * @param target the contract to forward the tx to
-   * @param handler the handler of the conract receiving the forwarded tx
+   * @param handler the handler of the contract receiving the forwarded tx
    * @return a hash of the inputs
    */
   function handlerSig(address target, bytes memory handler)
