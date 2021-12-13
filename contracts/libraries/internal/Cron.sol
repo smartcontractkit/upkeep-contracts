@@ -361,7 +361,9 @@ library Cron {
   function validate(Spec memory spec) private pure returns (Spec memory) {
     validateField(spec.minute, MINUTE, 5, 0, 59);
     validateField(spec.hour, HOUR, 1, 0, 23);
-    validateField(spec.day, DAY, 1, 1, DateTime.getDaysInMonth(spec.month, year)); // TODO: get year
+    validateField(spec.day, DAY, 1, 1, 31);
+    // TODO: get year
+    // validateField(spec.day, DAY, 1, 1, DateTime.getDaysInMonth(spec.month, year));
     validateField(spec.month, MONTH, 1, 1, 12);
     validateField(spec.dayOfWeek, DAY_OF_WEEK, 1, 0, 6);
     return spec;
