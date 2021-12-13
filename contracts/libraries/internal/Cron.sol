@@ -442,8 +442,9 @@ library Cron {
           revert InvalidField(fieldName, reason);
         }
       }
+    } else {
+      revert UnknownFieldType();
     }
-    revert UnknownFieldType();
   }
 
   /**
@@ -520,8 +521,9 @@ library Cron {
         result = bytes.concat(result, ",", uintToBString(field.list[idx]));
       }
       return result;
+    } else {
+      revert UnknownFieldType();
     }
-    revert UnknownFieldType();
   }
 
   /**
