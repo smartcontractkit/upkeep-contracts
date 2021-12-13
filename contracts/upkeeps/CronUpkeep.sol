@@ -159,7 +159,7 @@ contract CronUpkeep is
    * @return list of active cron job IDs
    */
   function getActiveCronJobIDs() external view returns (uint256[] memory) {
-    uint256[] jobIDs;
+    uint256[] memory jobIDs;
     uint256 length = EnumerableSet.length(s_activeCronJobIDs);
     uint256 idx;
     for (idx = 0; idx < length; idx++) {
