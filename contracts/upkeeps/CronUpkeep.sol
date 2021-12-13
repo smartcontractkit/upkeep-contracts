@@ -22,6 +22,7 @@ import "@chainlink/contracts/src/v0.8/dev/ConfirmedOwner.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/proxy/Proxy.sol";
+import "@openzeppelin/contracts/utils/EnumerableSet.sol";
 import "./KeeperBase.sol";
 import "../interfaces/KeeperCompatibleInterface.sol";
 import {Cron as CronInternal, Spec} from "../libraries/internal/Cron.sol";
@@ -54,7 +55,7 @@ contract CronUpkeep is
 
   address immutable s_delegate;
   uint256 private s_nextCronJobID = 1;
-  uint256[] private s_activeCronJobIDs;
+  EnumerableSet.UintSet private s_activeCronJobIDs;
 
   mapping(uint256 => uint256) private s_lastRuns;
   mapping(uint256 => Spec) private s_specs;
@@ -114,23 +115,13 @@ contract CronUpkeep is
     if (s_targets[id] == address(0)) {
       revert CronJobIDNotFound(id);
     }
-    uint256 existingID;
-    uint256 oldLength = s_activeCronJobIDs.length;
-    uint256 newLength = oldLength - 1;
-    uint256 idx;
-    for (idx = 0; idx < newLength; idx++) {
-      existingID = s_activeCronJobIDs[idx];
-      if (existingID == id) {
-        s_activeCronJobIDs[idx] = s_activeCronJobIDs[newLength];
-        break;
-      }
-    }
+
     delete s_lastRuns[id];
     delete s_specs[id];
     delete s_targets[id];
     delete s_handlers[id];
     delete s_handlerSignatures[id];
-    s_activeCronJobIDs.pop();
+    EnumerableSet.remove(s_activeCronJobIDs, id);
     emit CronJobDeleted(id);
   }
 
@@ -168,7 +159,13 @@ contract CronUpkeep is
    * @return list of active cron job IDs
    */
   function getActiveCronJobIDs() external view returns (uint256[] memory) {
-    return s_activeCronJobIDs;
+    uint256[] jobIDs;
+    uint256 length = EnumerableSet.length(s_activeCronJobIDs);
+    uint256 idx;
+    for (idx = 0; idx < length; idx++) {
+      jobIDs[idx] = EnumerableSet.at(s_activeCronJobIDs, idx);
+    }
+    return jobIDs;
   }
 
   /**
@@ -228,7 +225,7 @@ contract CronUpkeep is
     Spec memory spec
   ) internal onlyOwner {
     uint256 newID = s_nextCronJobID;
-    s_activeCronJobIDs.push(newID);
+    EnumerableSet.add(s_activeCronJobIDs, newID);
     s_targets[newID] = target;
     s_handlers[newID] = handler;
     s_specs[newID] = spec;
