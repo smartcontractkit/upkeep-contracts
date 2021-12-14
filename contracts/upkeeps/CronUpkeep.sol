@@ -42,6 +42,8 @@ contract CronUpkeep is
   Pausable,
   Proxy
 {
+  using EnumerableSet for EnumerableSet.UintSet;
+
   event CronJobExecuted(uint256 indexed id, uint256 timestamp);
   event CronJobCreated(uint256 indexed id, address target, bytes handler);
   event CronJobDeleted(uint256 indexed id);
@@ -121,7 +123,7 @@ contract CronUpkeep is
     delete s_targets[id];
     delete s_handlers[id];
     delete s_handlerSignatures[id];
-    EnumerableSet.remove(s_activeCronJobIDs, id);
+    s_activeCronJobIDs.remove(id);
     emit CronJobDeleted(id);
   }
 
@@ -159,11 +161,11 @@ contract CronUpkeep is
    * @return list of active cron job IDs
    */
   function getActiveCronJobIDs() external view returns (uint256[] memory) {
-    uint256 length = EnumerableSet.length(s_activeCronJobIDs);
+    uint256 length = s_activeCronJobIDs.length();
     uint256[] memory jobIDs = new uint256[](length);
     uint256 idx;
     for (idx = 0; idx < length; idx++) {
-      jobIDs[idx] = EnumerableSet.at(s_activeCronJobIDs, idx);
+      jobIDs[idx] = s_activeCronJobIDs.at(idx);
     }
     return jobIDs;
   }
@@ -225,7 +227,7 @@ contract CronUpkeep is
     Spec memory spec
   ) internal onlyOwner {
     uint256 newID = s_nextCronJobID;
-    EnumerableSet.add(s_activeCronJobIDs, newID);
+    s_activeCronJobIDs.add(newID);
     s_targets[newID] = target;
     s_handlers[newID] = handler;
     s_specs[newID] = spec;

@@ -12,6 +12,7 @@ import {Cron, Spec} from "../libraries/internal/Cron.sol";
  * of the CronUpkeep contracts.
  */
 contract CronUpkeepDelegate {
+  using EnumerableSet for EnumerableSet.UintSet;
   using Cron for Spec;
 
   address private s_owner; // from ConfirmedOwner
@@ -35,7 +36,7 @@ contract CronUpkeepDelegate {
   {
     // DEV: start at a random spot in the list so that checks are
     // spread evenly among cron jobs
-    uint256 numCrons = EnumerableSet.length(s_activeCronJobIDs);
+    uint256 numCrons = s_activeCronJobIDs.length();
     uint256 startIdx = block.number % numCrons;
     bool result;
     bytes memory payload;
@@ -65,7 +66,7 @@ contract CronUpkeepDelegate {
     uint256 id;
     uint256 lastTick;
     for (uint256 idx = start; idx < end; idx++) {
-      id = EnumerableSet.at(s_activeCronJobIDs, idx);
+      id = s_activeCronJobIDs.at(idx);
       lastTick = s_specs[id].lastTick();
       if (lastTick > s_lastRuns[id]) {
         return (true, abi.encode(id, lastTick, s_targets[id], s_handlers[id]));
