@@ -12,7 +12,7 @@
   Then, the user stores the Spec on chain. Finally, users use the nextTick(),
   function to determine the datetime of the next cron job run.
 
-  Cron jobs are interpreted acording to this fomat:
+  Cron jobs are interpreted according to this format:
 
   ┌───────────── minute (0 - 59)
   │ ┌───────────── hour (0 - 23)
@@ -321,7 +321,7 @@ library Cron {
   }
 
   /**
-   * @notice matches evaluates if a values matches a field.
+   * @notice matches evaluates if a value matches a field.
    * ex: 3 matches *, 3 matches 0-5, 3 does not match 0,2,4
    * @param field the field struct to match against
    * @param value the value of a field
@@ -519,8 +519,9 @@ library Cron {
         result = bytes.concat(result, ",", uintToBString(field.list[idx]));
       }
       return result;
+    } else {
+      revert UnknownFieldType();
     }
-    revert UnknownFieldType();
   }
 
   /**

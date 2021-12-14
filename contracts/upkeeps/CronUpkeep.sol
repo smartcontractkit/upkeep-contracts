@@ -22,6 +22,7 @@ import "@chainlink/contracts/src/v0.8/dev/ConfirmedOwner.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/proxy/Proxy.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "./KeeperBase.sol";
 import "../interfaces/KeeperCompatibleInterface.sol";
 import {Cron as CronInternal, Spec} from "../libraries/internal/Cron.sol";
@@ -41,6 +42,8 @@ contract CronUpkeep is
   Pausable,
   Proxy
 {
+  using EnumerableSet for EnumerableSet.UintSet;
+
   event CronJobExecuted(uint256 indexed id, uint256 timestamp);
   event CronJobCreated(uint256 indexed id, address target, bytes handler);
   event CronJobDeleted(uint256 indexed id);
@@ -54,7 +57,7 @@ contract CronUpkeep is
 
   address immutable s_delegate;
   uint256 private s_nextCronJobID = 1;
-  uint256[] private s_activeCronJobIDs;
+  EnumerableSet.UintSet private s_activeCronJobIDs;
 
   mapping(uint256 => uint256) private s_lastRuns;
   mapping(uint256 => Spec) private s_specs;
@@ -111,26 +114,16 @@ contract CronUpkeep is
    * @param id the id of the cron job to delete
    */
   function deleteCronJob(uint256 id) external onlyOwner {
-    if (s_targets[id] == address(0)) {
+    if (!s_activeCronJobIDs.contains(id)) {
       revert CronJobIDNotFound(id);
     }
-    uint256 existingID;
-    uint256 oldLength = s_activeCronJobIDs.length;
-    uint256 newLength = oldLength - 1;
-    uint256 idx;
-    for (idx = 0; idx < newLength; idx++) {
-      existingID = s_activeCronJobIDs[idx];
-      if (existingID == id) {
-        s_activeCronJobIDs[idx] = s_activeCronJobIDs[newLength];
-        break;
-      }
-    }
+
     delete s_lastRuns[id];
     delete s_specs[id];
     delete s_targets[id];
     delete s_handlers[id];
     delete s_handlerSignatures[id];
-    s_activeCronJobIDs.pop();
+    s_activeCronJobIDs.remove(id);
     emit CronJobDeleted(id);
   }
 
@@ -151,7 +144,7 @@ contract CronUpkeep is
   /**
    * @notice Get the id of an eligible cron job
    * @return upkeepNeeded signals if upkeep is needed, performData is an abi encoding
-   * of the id and "next tick" of the elligible cron job
+   * of the id and "next tick" of the eligible cron job
    */
   function checkUpkeep(bytes calldata)
     external
@@ -168,7 +161,12 @@ contract CronUpkeep is
    * @return list of active cron job IDs
    */
   function getActiveCronJobIDs() external view returns (uint256[] memory) {
-    return s_activeCronJobIDs;
+    uint256 length = s_activeCronJobIDs.length();
+    uint256[] memory jobIDs = new uint256[](length);
+    for (uint256 idx = 0; idx < length; idx++) {
+      jobIDs[idx] = s_activeCronJobIDs.at(idx);
+    }
+    return jobIDs;
   }
 
   /**
@@ -189,6 +187,10 @@ contract CronUpkeep is
       uint256 nextTick
     )
   {
+    if (!s_activeCronJobIDs.contains(id)) {
+      revert CronJobIDNotFound(id);
+    }
+
     Spec memory spec = s_specs[id];
     return (
       s_targets[id],
@@ -224,7 +226,7 @@ contract CronUpkeep is
     Spec memory spec
   ) internal onlyOwner {
     uint256 newID = s_nextCronJobID;
-    s_activeCronJobIDs.push(newID);
+    s_activeCronJobIDs.add(newID);
     s_targets[newID] = target;
     s_handlers[newID] = handler;
     s_specs[newID] = spec;
@@ -243,7 +245,7 @@ contract CronUpkeep is
    * @param id the id of the cron job
    * @param tickTime the observed tick time
    * @param target the contract to forward the tx to
-   * @param handler the handler of the conract receiving the forwarded tx
+   * @param handler the handler of the contract receiving the forwarded tx
    */
   function validate(
     uint256 id,
@@ -268,7 +270,7 @@ contract CronUpkeep is
   /**
    * @notice returns a unique identifier for target/handler pairs
    * @param target the contract to forward the tx to
-   * @param handler the handler of the conract receiving the forwarded tx
+   * @param handler the handler of the contract receiving the forwarded tx
    * @return a hash of the inputs
    */
   function handlerSig(address target, bytes memory handler)
