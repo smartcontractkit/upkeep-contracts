@@ -114,7 +114,7 @@ contract CronUpkeep is
    * @param id the id of the cron job to delete
    */
   function deleteCronJob(uint256 id) external onlyOwner {
-    if (s_targets[id] == address(0)) {
+    if (!s_activeCronJobIDs.contains(id)) {
       revert CronJobIDNotFound(id);
     }
 
@@ -163,8 +163,7 @@ contract CronUpkeep is
   function getActiveCronJobIDs() external view returns (uint256[] memory) {
     uint256 length = s_activeCronJobIDs.length();
     uint256[] memory jobIDs = new uint256[](length);
-    uint256 idx;
-    for (idx = 0; idx < length; idx++) {
+    for (uint256 idx = 0; idx < length; idx++) {
       jobIDs[idx] = s_activeCronJobIDs.at(idx);
     }
     return jobIDs;
@@ -188,7 +187,7 @@ contract CronUpkeep is
       uint256 nextTick
     )
   {
-    if (s_targets[id] == address(0)) {
+    if (!s_activeCronJobIDs.contains(id)) {
       revert CronJobIDNotFound(id);
     }
 
